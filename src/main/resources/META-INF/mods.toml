@@ -8,7 +8,7 @@ license = "MIT"
 [[mods]]
 modId = "pirates"
 version = "1.8.5"
-displayName = "Valkyrien Pirates Forge"
+displayName = "Valkyrien Pirates"
 authors = ["Acrogeneous", "G_Mungus", "Quoissant"]
 description = '''
 Pirates Forge dependency layer

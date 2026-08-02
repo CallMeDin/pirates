@@ -20,6 +20,8 @@ import net.fabricmc.fabric.api.gamerule.v1.GameRuleFactory;
 import net.fabricmc.fabric.api.gamerule.v1.GameRuleRegistry;
 import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents;
+import net.fabricmc.fabric.api.event.player.UseEntityCallback;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.object.builder.v1.block.entity.FabricBlockEntityTypeBuilder;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricDefaultAttributeRegistry;
 import net.fabricmc.fabric.api.object.builder.v1.entity.FabricEntityTypeBuilder;
@@ -35,6 +37,7 @@ import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityDimensions;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.SpawnGroup;
+import net.minecraft.entity.passive.VillagerEntity;
 import net.minecraft.item.*;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -44,6 +47,7 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
 import net.minecraft.util.Identifier;
+import net.minecraft.village.VillagerProfession;
 import net.minecraft.world.GameRules;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -72,6 +76,7 @@ public class Pirates implements ModInitializer {
 	public static int pursuitDistance;
 	public static boolean shouldEnableFlyingPirates;
 	public static Supplier<ItemStack> recruitCost;
+	public static Supplier<ItemStack> doctorRecruitCost;
 	public static CompatTracker loadedCompats = new CompatTracker();
 
 	@Override
@@ -139,11 +144,15 @@ public class Pirates implements ModInitializer {
 
 		String[] rc = ConfigUtils.config.getOrDefault("recruit-cost","minecraft:golden_apple,1").split(",");
 		recruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(rc[0])),Integer.parseInt(rc[1]));
+		String[] drc = ConfigUtils.config.getOrDefault("doctor-recruit-cost","minecraft:emerald,1").split(",");
+		doctorRecruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(drc[0])),Integer.parseInt(drc[1]));
 
 		registerEntityThings();
 		//entity types do it themselves
 		registerBlocks();
 		registerItems();
+		registerVillagerRecruitment();
+		registerContractUse();
 		//block entities do it themselves
 		//registerDispenserThings();
 		ModSounds.registerSounds();
@@ -174,6 +183,47 @@ public class Pirates implements ModInitializer {
 
 	}
 
+	private void registerVillagerRecruitment() {
+		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+			VillagerProfession profession;
+			if (!(entity instanceof VillagerEntity villager)
+					|| villager.isBaby()
+					|| ((profession = villager.getVillagerData().getProfession()) != VillagerProfession.NONE
+					&& profession != VillagerProfession.NITWIT)) {
+				return ActionResult.PASS;
+			}
+
+			ItemStack heldStack = player.getStackInHand(hand);
+			ItemStack payment = recruitCost.get();
+			ItemStack contract = new ItemStack(CANNONEER_ITEM);
+
+			ItemStack doctorPayment = doctorRecruitCost.get();
+			if (heldStack.isOf(doctorPayment.getItem()) && heldStack.getCount() >= doctorPayment.getCount()) {
+				payment = doctorPayment;
+				contract = new ItemStack(DOCTOR_ITEM);
+			} else if (!heldStack.isOf(payment.getItem()) || heldStack.getCount() < payment.getCount()) {
+				return ActionResult.PASS;
+			}
+
+			if (!world.isClient) {
+				heldStack.decrement(payment.getCount());
+				player.giveItemStack(contract);
+				villager.discard();
+			}
+			return ActionResult.SUCCESS;
+		});
+	}
+
+	private void registerContractUse() {
+		UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+			ItemStack heldStack = player.getStackInHand(hand);
+			if (!(heldStack.getItem() instanceof ContractItem contract)) {
+				return ActionResult.PASS;
+			}
+
+			return contract.useOnBlock(new ItemUsageContext(player, hand, hitResult));
+		});
+	}
 
 	private void registerEntityThings()
 	{
@@ -228,7 +278,7 @@ public class Pirates implements ModInitializer {
 	public static final ShipPointer SHIP_POINTER = new ShipPointer(new Item.Settings());
 	public static final ShipPather SHIP_PATHER = new ShipPather(new Item.Settings());
 	public static final ContractItem CANNONEER_ITEM = new ContractItem(CANNON_PRIMING_BLOCK,"cannoneer");
-	public static final ContractItem DOCTOR_ITEM = new ContractItem(Blocks.GOLD_BLOCK,"doctor");
+	public static final ContractItem DOCTOR_ITEM = new ContractItem(Blocks.LECTERN,"doctor");
 	public static final TestItem TEST_ITEM = new TestItem(new Item.Settings());
 	private void registerItems()
 	{

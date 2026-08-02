@@ -101,6 +101,9 @@ public class ConfigUtils {
         defaults.add("");
         defaults.add("#what item should be used to recruit friendly pirates in the format \"minecraft:golden_apple,1\" to mean 1 golden apple");
         defaults.add("recruit-cost=minecraft:golden_apple,1");
+        defaults.add("");
+        defaults.add("#what item should be used to recruit doctors from jobless villagers");
+        defaults.add("doctor-recruit-cost=minecraft:emerald,1");
 
         return defaults;
     }

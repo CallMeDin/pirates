@@ -22,6 +22,8 @@ public final class MusketModCompat {
             id("musket"), id("musket_with_bayonet"), id("blunderbuss"), id("pistol"), id("musket_with_scope")
     };
     private static final Identifier PISTOL_ID = id("pistol");
+    private static final Identifier CARTRIDGE_ID = id("cartridge");
+    private static final float CARTRIDGE_DROP_CHANCE = 0.1F;
 
     private MusketModCompat() {}
 
@@ -35,11 +37,31 @@ public final class MusketModCompat {
         return item == Items.AIR ? null : item;
     }
 
+    public static Item pistolOrCrossbow() {
+        if (isLoaded()) {
+            Item pistol = Registries.ITEM.get(PISTOL_ID);
+            if (pistol != Items.AIR) {
+                return pistol;
+            }
+        }
+        return Items.CROSSBOW;
+    }
     public static void equipRandomGunOrBow(AbstractPirateEntity pirate, Random random) {
         Item gun = randomGun(random);
         pirate.equipStack(EquipmentSlot.MAINHAND, new ItemStack(gun == null ? Items.BOW : gun));
         if (gun != null && Registries.ITEM.getId(gun).equals(PISTOL_ID)) {
             pirate.equipStack(EquipmentSlot.OFFHAND, new ItemStack(gun));
+        }
+    }
+
+    public static void dropCartridgeOnKill(AbstractPirateEntity pirate) {
+        if (!isLoaded() || pirate.getWorld().isClient() || pirate.getRandom().nextFloat() >= CARTRIDGE_DROP_CHANCE) {
+            return;
+        }
+
+        Item cartridge = Registries.ITEM.get(CARTRIDGE_ID);
+        if (cartridge != Items.AIR) {
+            pirate.dropStack(new ItemStack(cartridge, 1 + pirate.getRandom().nextInt(5)));
         }
     }
 

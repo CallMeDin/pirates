@@ -70,6 +70,9 @@ public abstract class AbstractPirateEntity extends IllagerEntity {
 
     @Override
     public void remove(RemovalReason reason) {
+        if (reason == RemovalReason.KILLED && !(this instanceof FriendlyPirateEntity)) {
+            MusketModCompat.dropCartridgeOnKill(this);
+        }
         DisarmUtils.disarm(getWorld(),blockToDisable);
         IPirateDies.EVENT.invoker().interact(attackingPlayer,this);
         super.remove(reason);

@@ -22,6 +22,7 @@ import net.minecraft.entity.data.TrackedDataHandlerRegistry;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.MobEntity;
 import net.minecraft.entity.mob.PillagerEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.entity.projectile.PersistentProjectileEntity;
@@ -97,8 +98,10 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
         super.initGoals();
 //        this.goalSelector.add(3, new PirateBowAttackGoal<>(this, 1.0D, 20, 20.0F));
         this.goalSelector.add(3, MusketModCompat.createRangedGoal(this));
-        this.targetSelector.add(3, new ActiveTargetGoal(this, PirateEntity.class, true));
-        this.targetSelector.add(3, new ActiveTargetGoal(this, PillagerEntity.class, true));
+        this.targetSelector.add(3, new ActiveTargetGoal<>(this, MobEntity.class, true,
+                target -> !(target instanceof FriendlyPirateEntity)
+                        && (target instanceof PirateEntity
+                        || target.getType().getSpawnGroup() == SpawnGroup.MONSTER)));
 //        this.targetSelector.add(1, new RevengeGoal(this));
     }
 
