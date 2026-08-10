@@ -2,13 +2,18 @@
   "type": "minecraft:crafting_shapeless",
   "group": "cannonball",
   "ingredients": [
-
-    {"item": "minecraft:blaze_powder"},
-    {"item": "minecraft:gunpowder"},
-    {"item": "minecraft:iron_ingot"}
-
+    {
+      "tag": "minecraft:coals"
+    },
+    {
+      "item": "minecraft:gunpowder"
+    },
+    {
+      "item": "minecraft:cobblestone"
+    }
   ],
   "result": {
-    "item": "pirates:cannonball"
+    "item": "pirates:cannonball",
+    "count": 1
   }
 }

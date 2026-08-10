@@ -56,6 +56,11 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
         super(Pirates.FRIENDLY_PIRATE_TYPE, world, BlockPos.ORIGIN);
     }
 
+    @Override
+    public boolean isAngryAt(PlayerEntity player) {
+        return false;
+    }
+
     public String getPirateJob() {
         return dataTracker.get(JOB);
     }
@@ -152,6 +157,19 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
 
     @Override
     public ActionResult interactAt(PlayerEntity player, Vec3d hitPos, Hand hand) {
+        if (!getEntityWorld().isClient
+                && player.isSneaking()
+                && player.getStackInHand(hand).isEmpty()
+                && hasCustomName()) {
+            ItemStack contract = getPirateJob().equals("doctor")
+                    ? new ItemStack(Pirates.DOCTOR_ITEM)
+                    : new ItemStack(Pirates.CANNONEER_ITEM);
+
+            player.giveItemStack(contract);
+            discard();
+            return ActionResult.SUCCESS;
+        }
+
         ItemStack stack = Pirates.recruitCost.get();
         if(!hasCustomName() && player.getStackInHand(hand).isOf(stack.getItem()))
         {

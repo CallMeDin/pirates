@@ -116,9 +116,10 @@ public class MotionInvokingBlock extends BlockWithEntity {
     public static void disarm(World world, BlockPos pos) {
         if (world.isClient()) return;
 
-        world.setBlockState(pos, Pirates.MOTION_INVOKING_BLOCK.getDefaultState().with(ARMED,false));
+        BlockState state = world.getBlockState(pos);
+        stopMotion(world,pos);
+        world.setBlockState(pos, state.with(ARMED,false));
         world.playSound(null, pos, SoundEvents.BLOCK_BEACON_DEACTIVATE, SoundCategory.BLOCKS, 1, 0.95f);
-        stopMotion(world,pos); //fixme possibly an issue
     }
 
     private static void stopMotion(World world, BlockPos pos) {
