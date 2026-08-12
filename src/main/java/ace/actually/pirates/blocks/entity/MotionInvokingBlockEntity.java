@@ -8,6 +8,7 @@ import ace.actually.pirates.util.SailsCompat;
 import ace.actually.pirates.repair.RepairExclusions;
 import ace.actually.pirates.repair.ShipBlueprint;
 import ace.actually.pirates.repair.ShipRepairManager;
+import ace.actually.pirates.repair.PiratesShipBlueprintState;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
@@ -38,9 +39,9 @@ import static net.minecraft.state.property.Properties.HORIZONTAL_FACING;
 public class MotionInvokingBlockEntity extends BlockEntity {
     NbtList path = new NbtList();
     long nextInstruction = 0;
-    private String repairBlueprintId = "";
-    private BlockRotation repairBlueprintRotation = BlockRotation.NONE;
-    private long repairShipId = -1L;
+    // Read-only legacy fields used once to migrate existing worlds into PiratesShipBlueprintState.
+    private String legacyRepairBlueprintId = "";
+    private BlockRotation legacyRepairBlueprintRotation = BlockRotation.NONE;
     private transient ShipBlueprint repairBlueprint;
     private transient long nextBlueprintMatchAttempt = 0L;
     //boolean isChecked = false;
@@ -160,29 +161,43 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     private void tickRepairController(ServerWorld world) {
         Ship ship = VSGameUtilsKt.getShipManagingPos(world, pos);
         if (ship == null) return;
-        repairShipId = ship.getId();
-        ShipRepairManager.register(world, repairShipId, this);
-        loadSavedRepairBlueprint(world);
+        ShipRepairManager.register(world, ship.getId(), this);
+        migrateLegacyBlueprint(world, ship.getId());
+        loadSavedRepairBlueprint(world, ship.getId());
     }
 
-    private void loadSavedRepairBlueprint(ServerWorld world) {
-        if (repairBlueprint != null || repairBlueprintId.isEmpty()) return;
-        Identifier id = Identifier.tryParse(repairBlueprintId);
-        if (id != null && ShipBlueprint.isEurekaBlueprint(id)) {
-            repairBlueprint = ShipBlueprint.load(world, id, repairBlueprintRotation).orElse(null);
+    private void migrateLegacyBlueprint(ServerWorld world, long shipId) {
+        if (legacyRepairBlueprintId.isEmpty()) return;
+        Identifier id = Identifier.tryParse(legacyRepairBlueprintId);
+        PiratesShipBlueprintState state = PiratesShipBlueprintState.get(world);
+        if (state.get(world, shipId) == null && id != null && ShipBlueprint.isEurekaBlueprint(id)) {
+            state.put(world, shipId, id, legacyRepairBlueprintRotation, pos);
+            Pirates.LOGGER.info("Migrated legacy repair blueprint {} for VS ship {} into Pirates world data", id, shipId);
+        }
+        legacyRepairBlueprintId = "";
+        legacyRepairBlueprintRotation = BlockRotation.NONE;
+    }
+
+    private void loadSavedRepairBlueprint(ServerWorld world, long shipId) {
+        if (repairBlueprint != null) return;
+        var record = PiratesShipBlueprintState.get(world).get(world, shipId);
+        if (record != null) {
+            repairBlueprint = ShipBlueprint.load(world, record.blueprintId(), record.rotation()).orElse(null);
         }
     }
     public RepairQuote createRepairQuote() {
         if (!(world instanceof ServerWorld serverWorld)) return null;
 
-        loadSavedRepairBlueprint(serverWorld);
+        Ship ship = VSGameUtilsKt.getShipManagingPos(serverWorld, pos);
+        if (ship == null) return null;
+        long shipId = ship.getId();
+        loadSavedRepairBlueprint(serverWorld, shipId);
         boolean existingBlueprint = repairBlueprint != null;
         if (!existingBlueprint) {
             repairBlueprint = ShipBlueprint.match(serverWorld, pos).orElse(null);
             if (repairBlueprint == null) return null;
-            repairBlueprintId = repairBlueprint.id().toString();
-            repairBlueprintRotation = repairBlueprint.rotation();
-            markDirty();
+            PiratesShipBlueprintState.get(serverWorld).put(serverWorld, shipId,
+                    repairBlueprint.id(), repairBlueprint.rotation(), pos);
         }
 
         int repairable = countRepairable(serverWorld, repairBlueprint);
@@ -195,7 +210,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
             if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
             BlockPos target = pos.add(entry.relativePos());
             if (!world.isChunkLoaded(target)) continue;
-            if (!world.getBlockState(target).equals(entry.state())) repairable++;
+            if (RepairExclusions.needsRepair(world.getBlockState(target), entry.state())) repairable++;
         }
         return repairable;
     }
@@ -206,17 +221,18 @@ public class MotionInvokingBlockEntity extends BlockEntity {
                 || !ShipBlueprint.isEurekaBlueprint(quote.blueprintId())) return -1;
         repairBlueprint = ShipBlueprint.load(serverWorld, quote.blueprintId(), quote.rotation()).orElse(null);
         if (repairBlueprint == null) return -1;
-        repairBlueprintId = quote.blueprintId().toString();
-        repairBlueprintRotation = quote.rotation();
-        markDirty();
+        Ship ship = VSGameUtilsKt.getShipManagingPos(serverWorld, pos);
+        if (ship == null) return -1;
+        PiratesShipBlueprintState.get(serverWorld).put(serverWorld, ship.getId(),
+                quote.blueprintId(), quote.rotation(), pos);
         int repaired = 0;
         for (ShipBlueprint.Entry entry : repairBlueprint.entries()) {
             if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
             BlockPos target = pos.add(entry.relativePos());
             if (!serverWorld.isChunkLoaded(target)) continue;
             BlockState current = serverWorld.getBlockState(target);
-            if (!current.equals(entry.state())) {
-                serverWorld.setBlockState(target, entry.state(), net.minecraft.block.Block.NOTIFY_ALL);
+            if (RepairExclusions.needsRepair(current, entry.state())) {
+                serverWorld.setBlockState(target, RepairExclusions.repairState(entry.state()), net.minecraft.block.Block.NOTIFY_ALL);
                 repaired++;
             }
         }
@@ -229,9 +245,6 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         nbt.put("path",path);
         nbt.putLong("nextInstruction", nextInstruction);
         nbt.putIntArray("target",target);
-        nbt.putString("repairBlueprintId", repairBlueprintId);
-        nbt.putString("repairBlueprintRotation", repairBlueprintRotation.name());
-        nbt.putLong("repairShipId", repairShipId);
         super.writeNbt(nbt);
     }
 
@@ -246,13 +259,12 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         if(nbt.contains("target")) {
             target = nbt.getIntArray("target");
         }
-        repairBlueprintId = nbt.getString("repairBlueprintId");
+        legacyRepairBlueprintId = nbt.getString("repairBlueprintId");
         try {
-            repairBlueprintRotation = BlockRotation.valueOf(nbt.getString("repairBlueprintRotation"));
+            legacyRepairBlueprintRotation = BlockRotation.valueOf(nbt.getString("repairBlueprintRotation"));
         } catch (IllegalArgumentException ignored) {
-            repairBlueprintRotation = BlockRotation.NONE;
+            legacyRepairBlueprintRotation = BlockRotation.NONE;
         }
-        repairShipId = nbt.getLong("repairShipId");
         repairBlueprint = null;
     }
 

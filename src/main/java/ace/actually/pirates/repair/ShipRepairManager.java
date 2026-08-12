@@ -4,6 +4,7 @@ import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.entity.MotionInvokingBlockEntity;
 import g_mungus.vlib.v2.api.extension.ShipExtKt;
 import kotlin.Unit;
+import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.Items;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -15,7 +16,7 @@ import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import java.util.HashMap;
 import java.util.Map;
 
-/** Runtime index from loaded VS ships to their persistent repair controller. */
+/** Runtime index plus repair operations keyed by the persistent Valkyrien Skies ship id. */
 public final class ShipRepairManager {
     private static final Map<Key, BlockPos> CONTROLLERS = new HashMap<>();
 
@@ -26,20 +27,20 @@ public final class ShipRepairManager {
     }
 
     public static QuoteResult quote(ServerPlayerEntity player, Entity boatswain) {
-        ControllerResult target = resolveController(player.getServerWorld(), boatswain);
+        ShipTarget target = resolveTarget(player.getServerWorld(), boatswain);
         if (target.error() != null) return new QuoteResult(null, target.error());
-        MotionInvokingBlockEntity.RepairQuote quote = target.controller().createRepairQuote();
+        MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
         return quote == null
                 ? new QuoteResult(null, "Could not compare this ship with the Eureka blueprints.")
                 : new QuoteResult(quote, null);
     }
 
     public static RepairResult payAndRepair(ServerPlayerEntity player, Entity boatswain) {
-        ControllerResult target = resolveController(player.getServerWorld(), boatswain);
+        ShipTarget target = resolveTarget(player.getServerWorld(), boatswain);
         if (target.error() != null) return new RepairResult(-1, false, target.error());
 
         // Recompute at click time so the client quote cannot become authoritative or stale.
-        MotionInvokingBlockEntity.RepairQuote quote = target.controller().createRepairQuote();
+        MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
         if (quote == null) return new RepairResult(-1, false, "Could not compare this ship with the Eureka blueprints.");
         if (quote.repairableBlocks() == 0) return RepairResult.NO_DAMAGE;
 
@@ -48,11 +49,61 @@ public final class ShipRepairManager {
             return RepairResult.NOT_ENOUGH_GOLD;
         }
 
-        int repaired = target.controller().repairImmediately(quote);
+        int repaired = repairImmediately(player.getServerWorld(), target, quote);
         if (repaired < 0) return new RepairResult(-1, false, "The matched blueprint could not be loaded.");
         if (repaired == 0) return RepairResult.NO_DAMAGE;
         if (!player.isCreative()) removeGold(player, price);
         return new RepairResult(repaired, true, "Repaired " + repaired + " ship blocks for " + price + " gold.");
+    }
+
+    private static MotionInvokingBlockEntity.RepairQuote createRepairQuote(ServerWorld world, ShipTarget target) {
+        PiratesShipBlueprintState state = PiratesShipBlueprintState.get(world);
+        PiratesShipBlueprintState.BlueprintRecord saved = state.get(world, target.ship().getId());
+        boolean existing = saved != null;
+        ShipBlueprint blueprint;
+        BlockPos anchor;
+        if (saved != null) {
+            blueprint = ShipBlueprint.load(world, saved.blueprintId(), saved.rotation()).orElse(null);
+            anchor = saved.controllerAnchor();
+        } else {
+            ShipBlueprint.ShipMatch match = ShipBlueprint.match(world, target.ship()).orElse(null);
+            if (match == null) return null;
+            blueprint = match.blueprint();
+            anchor = match.anchor();
+            state.put(world, target.ship().getId(), blueprint.id(), blueprint.rotation(), anchor);
+        }
+        if (blueprint == null) return null;
+
+        int repairable = 0;
+        for (ShipBlueprint.Entry entry : blueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos pos = anchor.add(entry.relativePos());
+            if (world.isChunkLoaded(pos) && RepairExclusions.needsRepair(world.getBlockState(pos), entry.state())) repairable++;
+        }
+        return new MotionInvokingBlockEntity.RepairQuote(
+                blueprint.id(), blueprint.rotation(), repairable, existing);
+    }
+
+    private static int repairImmediately(ServerWorld world, ShipTarget target,
+                                         MotionInvokingBlockEntity.RepairQuote quote) {
+        ShipBlueprint blueprint = ShipBlueprint.load(world, quote.blueprintId(), quote.rotation()).orElse(null);
+        PiratesShipBlueprintState.BlueprintRecord saved =
+                PiratesShipBlueprintState.get(world).get(world, target.ship().getId());
+        if (blueprint == null || saved == null) return -1;
+        BlockPos anchor = saved.controllerAnchor();
+
+        int repaired = 0;
+        for (ShipBlueprint.Entry entry : blueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos pos = anchor.add(entry.relativePos());
+            if (!world.isChunkLoaded(pos)) continue;
+            BlockState current = world.getBlockState(pos);
+            if (RepairExclusions.needsRepair(current, entry.state())) {
+                world.setBlockState(pos, RepairExclusions.repairState(entry.state()), net.minecraft.block.Block.NOTIFY_ALL);
+                repaired++;
+            }
+        }
+        return repaired;
     }
 
     private static void removeGold(ServerPlayerEntity player, int amount) {
@@ -67,14 +118,14 @@ public final class ShipRepairManager {
         player.getInventory().markDirty();
     }
 
-    private static ControllerResult resolveController(ServerWorld world, Entity boatswain) {
+    private static ShipTarget resolveTarget(ServerWorld world, Entity boatswain) {
         Ship ship = resolveEntityShip(world, boatswain);
-        if (ship == null) return new ControllerResult(null, "Could not resolve the Valkyrien ship supporting this boatswain.");
-        MotionInvokingBlockEntity controller = controller(world, ship.getId());
-        if (controller == null) controller = findController(world, ship);
-        return controller == null
-                ? new ControllerResult(null, "This ship has no loaded Motion Invoking Block repair controller.")
-                : new ControllerResult(controller, null);
+        if (ship == null) return new ShipTarget(null, null,
+                "Could not resolve the Valkyrien ship supporting this boatswain.");
+
+        PiratesShipBlueprintState.BlueprintRecord saved =
+                PiratesShipBlueprintState.get(world).get(world, ship.getId());
+        return new ShipTarget(ship, saved == null ? null : saved.controllerAnchor(), null);
     }
 
     private static MotionInvokingBlockEntity controller(ServerWorld world, long shipId) {
@@ -108,7 +159,9 @@ public final class ShipRepairManager {
     private static MotionInvokingBlockEntity findController(ServerWorld world, Ship ship) {
         MotionInvokingBlockEntity[] found = new MotionInvokingBlockEntity[1];
         ShipExtKt.forEachBlock(ship, blockPos -> {
-            if (found[0] == null && world.getBlockEntity(blockPos) instanceof MotionInvokingBlockEntity controller) found[0] = controller;
+            if (found[0] == null && world.getBlockEntity(blockPos) instanceof MotionInvokingBlockEntity controller) {
+                found[0] = controller;
+            }
             return Unit.INSTANCE;
         });
         if (found[0] != null) register(world, ship.getId(), found[0]);
@@ -124,6 +177,6 @@ public final class ShipRepairManager {
         public static final RepairResult NOT_ENOUGH_GOLD = new RepairResult(-1, false, "Insufficient gold");
         public static final RepairResult NO_DAMAGE = new RepairResult(0, false, "No eligible blueprint blocks need repair.");
     }
-    private record ControllerResult(MotionInvokingBlockEntity controller, String error) {}
+    private record ShipTarget(Ship ship, BlockPos anchor, String error) {}
     private record Key(String dimension, long shipId) {}
 }

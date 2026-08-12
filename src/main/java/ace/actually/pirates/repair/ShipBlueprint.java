@@ -1,6 +1,9 @@
 package ace.actually.pirates.repair;
 
 import ace.actually.pirates.Pirates;
+import g_mungus.vlib.v2.api.extension.ShipExtKt;
+import kotlin.Unit;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtElement;
@@ -19,6 +22,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Comparator;
+import org.valkyrienskies.core.api.ships.Ship;
 
 /** Immutable, controller-relative view of one bundled ship structure template. */
 public final class ShipBlueprint {
@@ -117,6 +122,79 @@ public final class ShipBlueprint {
         return Optional.of(best.blueprint());
     }
 
+    /**
+     * Finds both blueprint and controller-relative anchor from the ship's remaining
+     * blocks. The controller itself is only a coordinate convention in the NBT and
+     * does not need to exist on the assembled ship.
+     */
+    public static Optional<ShipMatch> match(ServerWorld world, Ship ship) {
+        Map<Block, List<BlockPos>> actualByBlock = new HashMap<>();
+        ShipExtKt.forEachBlock(ship, pos -> {
+            BlockState state = world.getBlockState(pos);
+            if (!state.isAir()) {
+                actualByBlock.computeIfAbsent(state.getBlock(), ignored -> new ArrayList<>())
+                        .add(pos.toImmutable());
+            }
+            return Unit.INSTANCE;
+        });
+        if (actualByBlock.isEmpty()) return Optional.empty();
+
+        AnchoredMatch best = null;
+        for (Identifier id : EUREKA_BLUEPRINT_IDS) {
+            Optional<StructureTemplate> optional = world.getStructureTemplateManager().getTemplate(id);
+            if (optional.isEmpty()) continue;
+            List<RawEntry> raw = decode(world, optional.get());
+            List<RawEntry> controllers = raw.stream()
+                    .filter(entry -> entry.state().isOf(Pirates.MOTION_INVOKING_BLOCK)).toList();
+            for (RawEntry controller : controllers) {
+                for (BlockRotation rotation : ROTATIONS) {
+                    ShipBlueprint candidate = build(id, rotation, raw, controller.pos());
+                    Map<Block, List<Entry>> blueprintByBlock = new HashMap<>();
+                    for (Entry entry : candidate.entries()) {
+                        if (entry.state().isAir() || entry.state().isOf(Pirates.MOTION_INVOKING_BLOCK)) continue;
+                        if (actualByBlock.containsKey(entry.state().getBlock())) {
+                            blueprintByBlock.computeIfAbsent(entry.state().getBlock(), ignored -> new ArrayList<>())
+                                    .add(entry);
+                        }
+                    }
+
+                    List<Block> pivots = blueprintByBlock.keySet().stream()
+                            .sorted(Comparator.comparingLong(block ->
+                                    (long) blueprintByBlock.get(block).size() * actualByBlock.get(block).size()))
+                            .limit(8).toList();
+                    Map<Long, Integer> anchorVotes = new HashMap<>();
+                    for (Block block : pivots) {
+                        for (Entry expected : blueprintByBlock.get(block)) {
+                            for (BlockPos actual : actualByBlock.get(block)) {
+                                long anchor = actual.subtract(expected.relativePos()).asLong();
+                                anchorVotes.merge(anchor, 1, Integer::sum);
+                            }
+                        }
+                    }
+
+                    for (Map.Entry<Long, Integer> vote : anchorVotes.entrySet().stream()
+                            .sorted(Map.Entry.<Long, Integer>comparingByValue().reversed())
+                            .limit(16).toList()) {
+                        BlockPos anchor = BlockPos.fromLong(vote.getKey());
+                        Match score = scoreAllBlocks(world, anchor, candidate);
+                        AnchoredMatch current = new AnchoredMatch(score, anchor);
+                        if (best == null || isBetter(current.match(), best.match())) best = current;
+                    }
+                }
+            }
+        }
+
+        if (best == null || best.match().matches() == 0) {
+            Pirates.LOGGER.warn("No usable Eureka blueprint could be aligned to VS ship {}", ship.getId());
+            return Optional.empty();
+        }
+        Match score = best.match();
+        double similarity = score.compared() == 0 ? 0.0 : score.matches() * 100.0 / score.compared();
+        Pirates.LOGGER.info("Aligned Eureka blueprint {} rotation={} to VS ship {} at {} similarity={}% ({}/{})",
+                score.blueprint().id(), score.blueprint().rotation(), ship.getId(), best.anchor(),
+                String.format(java.util.Locale.ROOT, "%.2f", similarity), score.matches(), score.compared());
+        return Optional.of(new ShipMatch(score.blueprint(), best.anchor()));
+    }
     private static boolean isBetter(Match candidate, Match best) {
         if (candidate.compared() == 0) return false;
         if (best == null || best.compared() == 0) return true;
@@ -207,6 +285,8 @@ public final class ShipBlueprint {
     }
 
     public record Entry(BlockPos relativePos, BlockState state, boolean hasBlockEntity) {}
+    public record ShipMatch(ShipBlueprint blueprint, BlockPos anchor) {}
     private record RawEntry(BlockPos pos, BlockState state, boolean hasBlockEntity) {}
     private record Match(ShipBlueprint blueprint, int matches, int compared) {}
+    private record AnchoredMatch(Match match, BlockPos anchor) {}
 }
