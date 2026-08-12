@@ -8,6 +8,7 @@ import ace.actually.pirates.entities.pirate_abstract.PirateWanderArroundFarGoal;
 import ace.actually.pirates.entities.pirate_default.PirateEntity;
 import ace.actually.pirates.util.DisarmUtils;
 import ace.actually.pirates.compat.MusketModCompat;
+import ace.actually.pirates.repair.BoatswainRepairNetworking;
 import net.minecraft.entity.*;
 import net.minecraft.entity.ai.RangedAttackMob;
 import net.minecraft.entity.ai.goal.ActiveTargetGoal;
@@ -161,15 +162,24 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
                 && player.isSneaking()
                 && player.getStackInHand(hand).isEmpty()
                 && hasCustomName()) {
-            ItemStack contract = getPirateJob().equals("doctor")
-                    ? new ItemStack(Pirates.DOCTOR_ITEM)
-                    : new ItemStack(Pirates.CANNONEER_ITEM);
+            ItemStack contract = switch (getPirateJob()) {
+                case "doctor" -> new ItemStack(Pirates.DOCTOR_ITEM);
+                case "boatswain" -> new ItemStack(Pirates.BOATSWAIN_ITEM);
+                default -> new ItemStack(Pirates.CANNONEER_ITEM);
+            };
 
             player.giveItemStack(contract);
             discard();
             return ActionResult.SUCCESS;
         }
 
+        if (getPirateJob().equals("boatswain") && !player.isSneaking()) {
+            if (!getEntityWorld().isClient) {
+                BoatswainRepairNetworking.openSelection(
+                        (net.minecraft.server.network.ServerPlayerEntity) player, this, hand);
+            }
+            return ActionResult.SUCCESS;
+        }
         ItemStack stack = Pirates.recruitCost.get();
         if(!hasCustomName() && player.getStackInHand(hand).isOf(stack.getItem()))
         {

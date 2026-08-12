@@ -1,6 +1,7 @@
 package ace.actually.pirates;
 
 import ace.actually.pirates.blocks.entity.CannonPrimingBlockEntityRenderer;
+import ace.actually.pirates.client.BoatswainBlueprintScreen;
 import ace.actually.pirates.blocks.entity.ShipIdBlockEntityRenderer;
 import ace.actually.pirates.entities.friendly_pirate.FriendlyPirateRenderer;
 import ace.actually.pirates.entities.pirate_skeleton.SkeletonPirateModel;
@@ -34,6 +35,14 @@ public class ClientPirates implements ClientModInitializer {
         //EntityModelLayerRegistry.registerModelLayer(SKELETON_PIRATE, SkeletonPirateModel::getTexturedModelData);
 
 
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+                Pirates.OPEN_BOATSWAIN_REPAIR_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    int entityId = buf.readVarInt();
+                    net.minecraft.util.Hand hand = buf.readEnumConstant(net.minecraft.util.Hand.class);
+                    client.execute(() -> client.setScreen(new BoatswainBlueprintScreen(entityId, hand)));
+                }
+        );
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
                 Pirates.CANNON_SMOKE_PACKET_ID,
                 (client, handler, buf, sender) -> {

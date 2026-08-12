@@ -11,6 +11,7 @@ import ace.actually.pirates.items.ContractItem;
 import ace.actually.pirates.items.ShipPather;
 import ace.actually.pirates.items.ShipPointer;
 import ace.actually.pirates.items.TestItem;
+import ace.actually.pirates.repair.BoatswainRepairNetworking;
 import ace.actually.pirates.sound.ModSounds;
 import ace.actually.pirates.util.ConfigUtils;
 import g_mungus.vlib.VLib;
@@ -62,6 +63,8 @@ public class Pirates implements ModInitializer {
 	public static final String MOD_ID = "pirates";
     public static final Logger LOGGER = LoggerFactory.getLogger("pirates");
 	public static final Identifier CANNON_SMOKE_PACKET_ID = new Identifier(MOD_ID, "cannon_smoke");
+    public static final Identifier OPEN_BOATSWAIN_REPAIR_PACKET_ID = new Identifier(MOD_ID, "open_boatswain_repair");
+    public static final Identifier SELECT_BOATSWAIN_BLUEPRINT_PACKET_ID = new Identifier(MOD_ID, "select_boatswain_blueprint");
 	public static final GameRules.Key<GameRules.BooleanRule> PIRATES_IS_LIVE_WORLD =
 			GameRuleRegistry.register("piratesIsLive", GameRules.Category.MISC, GameRuleFactory.createBooleanRule(true));
 
@@ -77,6 +80,8 @@ public class Pirates implements ModInitializer {
 	public static boolean shouldEnableFlyingPirates;
 	public static Supplier<ItemStack> recruitCost;
 	public static Supplier<ItemStack> doctorRecruitCost;
+	public static Supplier<ItemStack> boatswainRecruitCost;
+	public static int shipRepairGoldCost;
 	public static CompatTracker loadedCompats = new CompatTracker();
 
 	@Override
@@ -146,6 +151,9 @@ public class Pirates implements ModInitializer {
 		recruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(rc[0])),Integer.parseInt(rc[1]));
 		String[] drc = ConfigUtils.config.getOrDefault("doctor-recruit-cost","minecraft:emerald,1").split(",");
 		doctorRecruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(drc[0])),Integer.parseInt(drc[1]));
+		String[] brc = ConfigUtils.config.getOrDefault("boatswain-recruit-cost","minecraft:emerald,10").split(",");
+		boatswainRecruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(brc[0])),Integer.parseInt(brc[1]));
+		shipRepairGoldCost = Integer.parseInt(ConfigUtils.config.getOrDefault("ship-repair-gold-cost", "64"));
 
 		registerEntityThings();
 		//entity types do it themselves
@@ -153,6 +161,7 @@ public class Pirates implements ModInitializer {
 		registerItems();
 		registerVillagerRecruitment();
 		registerContractUse();
+		BoatswainRepairNetworking.registerServerReceiver();
 		//block entities do it themselves
 		//registerDispenserThings();
 		ModSounds.registerSounds();
@@ -172,6 +181,7 @@ public class Pirates implements ModInitializer {
 			itemGroup.add(Pirates.SHIP_PATHER);
 			itemGroup.add(Pirates.CANNONEER_ITEM);
 			itemGroup.add(Pirates.DOCTOR_ITEM);
+			itemGroup.add(Pirates.BOATSWAIN_ITEM);
 		});
 
 		IPirateDies.EVENT.register((player, pirate) ->
@@ -196,9 +206,14 @@ public class Pirates implements ModInitializer {
 			ItemStack heldStack = player.getStackInHand(hand);
 			ItemStack payment = recruitCost.get();
 			ItemStack contract = new ItemStack(CANNONEER_ITEM);
-
+			ItemStack boatswainPayment = boatswainRecruitCost.get();
 			ItemStack doctorPayment = doctorRecruitCost.get();
-			if (heldStack.isOf(doctorPayment.getItem()) && heldStack.getCount() >= doctorPayment.getCount()) {
+
+			// Check the more expensive emerald profession first because doctor uses the same item.
+			if (heldStack.isOf(boatswainPayment.getItem()) && heldStack.getCount() >= boatswainPayment.getCount()) {
+				payment = boatswainPayment;
+				contract = new ItemStack(BOATSWAIN_ITEM);
+			} else if (heldStack.isOf(doctorPayment.getItem()) && heldStack.getCount() >= doctorPayment.getCount()) {
 				payment = doctorPayment;
 				contract = new ItemStack(DOCTOR_ITEM);
 			} else if (!heldStack.isOf(payment.getItem()) || heldStack.getCount() < payment.getCount()) {
@@ -279,6 +294,7 @@ public class Pirates implements ModInitializer {
 	public static final ShipPather SHIP_PATHER = new ShipPather(new Item.Settings());
 	public static final ContractItem CANNONEER_ITEM = new ContractItem(CANNON_PRIMING_BLOCK,"cannoneer");
 	public static final ContractItem DOCTOR_ITEM = new ContractItem(Blocks.LECTERN,"doctor");
+	public static final ContractItem BOATSWAIN_ITEM = new ContractItem(Blocks.SMITHING_TABLE,"boatswain");
 	public static final TestItem TEST_ITEM = new TestItem(new Item.Settings());
 	private void registerItems()
 	{
@@ -289,6 +305,7 @@ public class Pirates implements ModInitializer {
 		Registry.register(Registries.ITEM,new Identifier("pirates","ship_pointer"),SHIP_POINTER);
 		Registry.register(Registries.ITEM,new Identifier("pirates","cannoneer"),CANNONEER_ITEM);
 		Registry.register(Registries.ITEM,new Identifier("pirates","doctor"),DOCTOR_ITEM);
+		Registry.register(Registries.ITEM,new Identifier("pirates","boatswain"),BOATSWAIN_ITEM);
 		Registry.register(Registries.ITEM,new Identifier("pirates","ship_pather"),SHIP_PATHER);
 		Registry.register(Registries.ITEM,new Identifier("pirates","stable_block"),new BlockItem(STABLE_BLOCK,new Item.Settings()));
 

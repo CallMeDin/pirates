@@ -5,6 +5,9 @@ import ace.actually.pirates.util.ConfigUtils;
 import ace.actually.pirates.util.EurekaCompat;
 import ace.actually.pirates.Pirates;
 import ace.actually.pirates.util.SailsCompat;
+import ace.actually.pirates.repair.RepairExclusions;
+import ace.actually.pirates.repair.ShipBlueprint;
+import ace.actually.pirates.repair.ShipRepairManager;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
@@ -12,6 +15,8 @@ import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIntArray;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.BlockRotation;
+import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.World;
@@ -33,6 +38,11 @@ import static net.minecraft.state.property.Properties.HORIZONTAL_FACING;
 public class MotionInvokingBlockEntity extends BlockEntity {
     NbtList path = new NbtList();
     long nextInstruction = 0;
+    private String repairBlueprintId = "";
+    private BlockRotation repairBlueprintRotation = BlockRotation.NONE;
+    private long repairShipId = -1L;
+    private transient ShipBlueprint repairBlueprint;
+    private transient long nextBlueprintMatchAttempt = 0L;
     //boolean isChecked = false;
 
     //variables below this line aren't serialised because they don't need to be.
@@ -53,6 +63,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
 //    }
 
     public static void tick(World world, BlockPos pos, BlockState state, MotionInvokingBlockEntity be) {
+        if (world instanceof ServerWorld serverWorld) be.tickRepairController(serverWorld);
 
 //        if (!be.isChecked) {
 //            state.with(COMPAT, 0);
@@ -146,11 +157,51 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         }
     }
 
+    private void tickRepairController(ServerWorld world) {
+        Ship ship = VSGameUtilsKt.getShipManagingPos(world, pos);
+        if (ship == null) return;
+        repairShipId = ship.getId();
+        ShipRepairManager.register(world, repairShipId, this);
+        loadSavedRepairBlueprint(world);
+    }
+
+    private void loadSavedRepairBlueprint(ServerWorld world) {
+        if (repairBlueprint != null || repairBlueprintId.isEmpty()) return;
+        Identifier id = Identifier.tryParse(repairBlueprintId);
+        if (id != null && ShipBlueprint.isEurekaBlueprint(id)) {
+            repairBlueprint = ShipBlueprint.load(world, id, repairBlueprintRotation).orElse(null);
+        }
+    }
+    /** Returns -1 when unavailable, otherwise the number of replaced blueprint blocks. */
+    public int repairImmediately(Identifier selectedBlueprintId) {
+        if (!(world instanceof ServerWorld serverWorld)) return -1;
+        if (!ShipBlueprint.isEurekaBlueprint(selectedBlueprintId)) return -1;
+        repairBlueprint = ShipBlueprint.load(serverWorld, selectedBlueprintId, BlockRotation.NONE).orElse(null);
+        if (repairBlueprint == null) return -1;
+        repairBlueprintId = selectedBlueprintId.toString();
+        repairBlueprintRotation = BlockRotation.NONE;
+        markDirty();
+        int repaired = 0;
+        for (ShipBlueprint.Entry entry : repairBlueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos target = pos.add(entry.relativePos());
+            if (!serverWorld.isChunkLoaded(target)) continue;
+            BlockState current = serverWorld.getBlockState(target);
+            if (!current.equals(entry.state())) {
+                serverWorld.setBlockState(target, entry.state(), net.minecraft.block.Block.NOTIFY_ALL);
+                repaired++;
+            }
+        }
+        return repaired;
+    }
     @Override
     protected void writeNbt(NbtCompound nbt) {
         nbt.put("path",path);
         nbt.putLong("nextInstruction", nextInstruction);
         nbt.putIntArray("target",target);
+        nbt.putString("repairBlueprintId", repairBlueprintId);
+        nbt.putString("repairBlueprintRotation", repairBlueprintRotation.name());
+        nbt.putLong("repairShipId", repairShipId);
         super.writeNbt(nbt);
     }
 
@@ -165,7 +216,14 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         if(nbt.contains("target")) {
             target = nbt.getIntArray("target");
         }
-
+        repairBlueprintId = nbt.getString("repairBlueprintId");
+        try {
+            repairBlueprintRotation = BlockRotation.valueOf(nbt.getString("repairBlueprintRotation"));
+        } catch (IllegalArgumentException ignored) {
+            repairBlueprintRotation = BlockRotation.NONE;
+        }
+        repairShipId = nbt.getLong("repairShipId");
+        repairBlueprint = null;
     }
 
     public void setTarget(int[] target) {

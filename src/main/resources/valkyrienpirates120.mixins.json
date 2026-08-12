@@ -4,7 +4,8 @@
   "compatibilityLevel": "JAVA_17",
   "mixins": [
     "compat.FallingBlockEntityMixin",
-    "bugfixes.SpeedMixin"
+    "bugfixes.SpeedMixin",
+    "repair.StructureTemplateManagerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

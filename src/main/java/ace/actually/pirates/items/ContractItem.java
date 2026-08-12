@@ -45,6 +45,10 @@ public class ContractItem extends Item {
                 fpe.equipStack(EquipmentSlot.MAINHAND, new ItemStack(MusketModCompat.pistolOrCrossbow()));
                 fpe.equipStack(EquipmentSlot.OFFHAND, PotionUtil.setPotion(new ItemStack(net.minecraft.item.Items.POTION), Potions.HEALING));
             }
+            else if (jobname.equals("boatswain")) {
+                fpe.equipStack(EquipmentSlot.MAINHAND, new ItemStack(MusketModCompat.pistolOrCrossbow()));
+                fpe.equipStack(EquipmentSlot.OFFHAND, new ItemStack(net.minecraft.item.Items.IRON_AXE));
+            }
             BlockState state = world.getBlockState(pos);
             DisarmUtils.rearm(world,pos);
 
