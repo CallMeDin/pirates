@@ -1,7 +1,6 @@
 package ace.actually.pirates.client;
 
 import ace.actually.pirates.Pirates;
-import ace.actually.pirates.repair.ShipBlueprint;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.networking.v1.PacketByteBufs;
 import net.minecraft.client.gui.DrawContext;
@@ -9,55 +8,52 @@ import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.network.PacketByteBuf;
 import net.minecraft.text.Text;
-import net.minecraft.util.Hand;
 import net.minecraft.util.Identifier;
 
 import java.util.Locale;
 
 public final class BoatswainBlueprintScreen extends Screen {
     private final int boatswainEntityId;
-    private final Hand hand;
+    private final Identifier matchedBlueprint;
+    private final int repairableBlocks;
+    private final int goldCost;
+    private final boolean existingBlueprint;
 
-    public BoatswainBlueprintScreen(int boatswainEntityId, Hand hand) {
-        super(Text.literal("Choose Ship Blueprint"));
+    public BoatswainBlueprintScreen(int boatswainEntityId, Identifier matchedBlueprint,
+                                    int repairableBlocks, int goldCost, boolean existingBlueprint) {
+        super(Text.literal("Boatswain Ship Repair"));
         this.boatswainEntityId = boatswainEntityId;
-        this.hand = hand;
+        this.matchedBlueprint = matchedBlueprint;
+        this.repairableBlocks = repairableBlocks;
+        this.goldCost = goldCost;
+        this.existingBlueprint = existingBlueprint;
     }
 
     @Override
     protected void init() {
-        int buttonWidth = 150;
-        int buttonHeight = 20;
-        int gap = 6;
-        int columns = 2;
-        int totalWidth = buttonWidth * columns + gap;
-        int startX = (width - totalWidth) / 2;
-        int startY = Math.max(48, (height - 6 * 24) / 2);
-
-        var ids = ShipBlueprint.eurekaBlueprintIds();
-        for (int i = 0; i < ids.size(); i++) {
-            Identifier id = ids.get(i);
-            int column = i % columns;
-            int row = i / columns;
-            addDrawableChild(ButtonWidget.builder(Text.literal(displayName(id)), button -> select(id))
-                    .dimensions(startX + column * (buttonWidth + gap), startY + row * 24, buttonWidth, buttonHeight)
-                    .build());
-        }
+        ButtonWidget repair = ButtonWidget.builder(
+                        Text.literal(repairableBlocks > 0 ? "Pay " + goldCost + " Gold and Repair" : "No Repairs Needed"),
+                        button -> requestRepair())
+                .dimensions(width / 2 - 90, height / 2 + 34, 180, 20)
+                .build();
+        repair.active = repairableBlocks > 0;
+        addDrawableChild(repair);
+        addDrawableChild(ButtonWidget.builder(Text.literal("Cancel"), button -> close())
+                .dimensions(width / 2 - 90, height / 2 + 60, 180, 20)
+                .build());
     }
 
-    private void select(Identifier id) {
+    private void requestRepair() {
         PacketByteBuf buf = PacketByteBufs.create();
         buf.writeVarInt(boatswainEntityId);
-        buf.writeEnumConstant(hand);
-        buf.writeIdentifier(id);
         ClientPlayNetworking.send(Pirates.SELECT_BOATSWAIN_BLUEPRINT_PACKET_ID, buf);
         close();
     }
 
-    private static String displayName(Identifier id) {
-        String[] words = id.getPath().substring("ship/".length()).split("-");
+    private String blueprintName() {
+        String path = matchedBlueprint.getPath().substring("ship/".length());
         StringBuilder result = new StringBuilder();
-        for (String word : words) {
+        for (String word : path.split("-")) {
             if (!result.isEmpty()) result.append(' ');
             result.append(word.substring(0, 1).toUpperCase(Locale.ROOT)).append(word.substring(1));
         }
@@ -67,10 +63,19 @@ public final class BoatswainBlueprintScreen extends Screen {
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         renderBackground(context);
-        context.drawCenteredTextWithShadow(textRenderer, title, width / 2, 18, 0xFFFFFF);
+        int center = width / 2;
+        int top = height / 2 - 54;
+        context.fill(center - 120, top - 12, center + 120, top + 116, 0xDD101820);
+        context.drawCenteredTextWithShadow(textRenderer, title, center, top, 0xFFE0B84F);
         context.drawCenteredTextWithShadow(textRenderer,
-                Text.literal("Select the original Eureka ship - repair cost: " + Pirates.shipRepairGoldCost + " gold"),
-                width / 2, 31, 0xE0B84F);
+                Text.literal(existingBlueprint ? "Exist blueprint found" : "Traverse to find blueprint"),
+                center, top + 18, existingBlueprint ? 0xFF77DD77 : 0xFFFFC857);
+        context.drawCenteredTextWithShadow(textRenderer,
+                Text.literal("Matched blueprint: " + blueprintName()), center, top + 34, 0xFFFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer,
+                Text.literal("Blocks that can be repaired: " + repairableBlocks), center, top + 50, 0xFFFFFFFF);
+        context.drawCenteredTextWithShadow(textRenderer,
+                Text.literal("Repair cost: " + goldCost + " gold ingots"), center, top + 66, 0xFFFFD65A);
         super.render(context, mouseX, mouseY, delta);
     }
 

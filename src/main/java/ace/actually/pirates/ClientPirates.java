@@ -39,8 +39,12 @@ public class ClientPirates implements ClientModInitializer {
                 Pirates.OPEN_BOATSWAIN_REPAIR_PACKET_ID,
                 (client, handler, buf, sender) -> {
                     int entityId = buf.readVarInt();
-                    net.minecraft.util.Hand hand = buf.readEnumConstant(net.minecraft.util.Hand.class);
-                    client.execute(() -> client.setScreen(new BoatswainBlueprintScreen(entityId, hand)));
+                    net.minecraft.util.Identifier blueprintId = buf.readIdentifier();
+                    int repairableBlocks = buf.readVarInt();
+                    int goldCost = buf.readVarInt();
+                    boolean existingBlueprint = buf.readBoolean();
+                    client.execute(() -> client.setScreen(
+                            new BoatswainBlueprintScreen(entityId, blueprintId, repairableBlocks, goldCost, existingBlueprint)));
                 }
         );
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(

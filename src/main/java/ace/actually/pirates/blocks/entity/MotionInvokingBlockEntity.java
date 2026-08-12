@@ -172,14 +172,42 @@ public class MotionInvokingBlockEntity extends BlockEntity {
             repairBlueprint = ShipBlueprint.load(world, id, repairBlueprintRotation).orElse(null);
         }
     }
+    public RepairQuote createRepairQuote() {
+        if (!(world instanceof ServerWorld serverWorld)) return null;
+
+        loadSavedRepairBlueprint(serverWorld);
+        boolean existingBlueprint = repairBlueprint != null;
+        if (!existingBlueprint) {
+            repairBlueprint = ShipBlueprint.match(serverWorld, pos).orElse(null);
+            if (repairBlueprint == null) return null;
+            repairBlueprintId = repairBlueprint.id().toString();
+            repairBlueprintRotation = repairBlueprint.rotation();
+            markDirty();
+        }
+
+        int repairable = countRepairable(serverWorld, repairBlueprint);
+        return new RepairQuote(repairBlueprint.id(), repairBlueprint.rotation(), repairable, existingBlueprint);
+    }
+
+    private int countRepairable(ServerWorld world, ShipBlueprint blueprint) {
+        int repairable = 0;
+        for (ShipBlueprint.Entry entry : blueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos target = pos.add(entry.relativePos());
+            if (!world.isChunkLoaded(target)) continue;
+            if (!world.getBlockState(target).equals(entry.state())) repairable++;
+        }
+        return repairable;
+    }
+
     /** Returns -1 when unavailable, otherwise the number of replaced blueprint blocks. */
-    public int repairImmediately(Identifier selectedBlueprintId) {
-        if (!(world instanceof ServerWorld serverWorld)) return -1;
-        if (!ShipBlueprint.isEurekaBlueprint(selectedBlueprintId)) return -1;
-        repairBlueprint = ShipBlueprint.load(serverWorld, selectedBlueprintId, BlockRotation.NONE).orElse(null);
+    public int repairImmediately(RepairQuote quote) {
+        if (!(world instanceof ServerWorld serverWorld) || quote == null
+                || !ShipBlueprint.isEurekaBlueprint(quote.blueprintId())) return -1;
+        repairBlueprint = ShipBlueprint.load(serverWorld, quote.blueprintId(), quote.rotation()).orElse(null);
         if (repairBlueprint == null) return -1;
-        repairBlueprintId = selectedBlueprintId.toString();
-        repairBlueprintRotation = BlockRotation.NONE;
+        repairBlueprintId = quote.blueprintId().toString();
+        repairBlueprintRotation = quote.rotation();
         markDirty();
         int repaired = 0;
         for (ShipBlueprint.Entry entry : repairBlueprint.entries()) {
@@ -194,6 +222,8 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         }
         return repaired;
     }
+
+    public record RepairQuote(Identifier blueprintId, BlockRotation rotation, int repairableBlocks, boolean existingBlueprint) {}
     @Override
     protected void writeNbt(NbtCompound nbt) {
         nbt.put("path",path);
