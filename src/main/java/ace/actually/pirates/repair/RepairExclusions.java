@@ -9,6 +9,7 @@ import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
+import org.valkyrienskies.eureka.block.ShipHelmBlock;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -24,6 +25,8 @@ public final class RepairExclusions {
         if (state.isAir() || state.isOf(Blocks.STRUCTURE_VOID)) return true;
         // This block has a block entity, but it must still be restored when destroyed.
         if (state.isOf(Pirates.MOTION_INVOKING_BLOCK)) return false;
+        // Eureka helms also have block entities, but are essential ship structure.
+        if (state.getBlock() instanceof ShipHelmBlock) return false;
         if (state.hasBlockEntity() || templateHasBlockEntity) return true;
         return configuredIds().contains(Registries.BLOCK.getId(state.getBlock()));
     }

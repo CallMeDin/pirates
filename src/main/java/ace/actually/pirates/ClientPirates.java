@@ -2,6 +2,7 @@ package ace.actually.pirates;
 
 import ace.actually.pirates.blocks.entity.CannonPrimingBlockEntityRenderer;
 import ace.actually.pirates.client.BoatswainBlueprintScreen;
+import ace.actually.pirates.client.RecruitmentScreen;
 import ace.actually.pirates.blocks.entity.ShipIdBlockEntityRenderer;
 import ace.actually.pirates.entities.friendly_pirate.FriendlyPirateRenderer;
 import ace.actually.pirates.entities.pirate_skeleton.SkeletonPirateModel;
@@ -45,6 +46,23 @@ public class ClientPirates implements ClientModInitializer {
                     boolean existingBlueprint = buf.readBoolean();
                     client.execute(() -> client.setScreen(
                             new BoatswainBlueprintScreen(entityId, blueprintId, repairableBlocks, goldCost, existingBlueprint)));
+                }
+        );
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(
+                Pirates.OPEN_RECRUITMENT_PACKET_ID,
+                (client, handler, buf, sender) -> {
+                    int entityId = buf.readVarInt();
+                    int count = buf.readVarInt();
+                    java.util.List<RecruitmentScreen.Offer> offers = new java.util.ArrayList<>();
+                    for (int i = 0; i < count; i++) {
+                        String id = buf.readString(32);
+                        String name = buf.readString(64);
+                        net.minecraft.item.Item item =
+                                net.minecraft.registry.Registries.ITEM.get(buf.readIdentifier());
+                        int price = buf.readVarInt();
+                        offers.add(new RecruitmentScreen.Offer(id, name, item, price));
+                    }
+                    client.execute(() -> client.setScreen(new RecruitmentScreen(entityId, offers)));
                 }
         );
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(

@@ -8,6 +8,7 @@ import ace.actually.pirates.entities.pirate_default.PirateEntity;
 import ace.actually.pirates.entities.pirate_skeleton.SkeletonPirateEntity;
 import ace.actually.pirates.events.IPirateDies;
 import ace.actually.pirates.items.ContractItem;
+import ace.actually.pirates.recruitment.RecruitmentNetworking;
 import ace.actually.pirates.items.ShipPather;
 import ace.actually.pirates.items.ShipPointer;
 import ace.actually.pirates.items.TestItem;
@@ -65,6 +66,8 @@ public class Pirates implements ModInitializer {
 	public static final Identifier CANNON_SMOKE_PACKET_ID = new Identifier(MOD_ID, "cannon_smoke");
     public static final Identifier OPEN_BOATSWAIN_REPAIR_PACKET_ID = new Identifier(MOD_ID, "open_boatswain_repair");
     public static final Identifier SELECT_BOATSWAIN_BLUEPRINT_PACKET_ID = new Identifier(MOD_ID, "select_boatswain_blueprint");
+    public static final Identifier OPEN_RECRUITMENT_PACKET_ID = new Identifier(MOD_ID, "open_recruitment");
+    public static final Identifier SELECT_RECRUIT_PROFESSION_PACKET_ID = new Identifier(MOD_ID, "select_recruit_profession");
 	public static final GameRules.Key<GameRules.BooleanRule> PIRATES_IS_LIVE_WORLD =
 			GameRuleRegistry.register("piratesIsLive", GameRules.Category.MISC, GameRuleFactory.createBooleanRule(true));
 
@@ -162,6 +165,7 @@ public class Pirates implements ModInitializer {
 		registerVillagerRecruitment();
 		registerContractUse();
 		BoatswainRepairNetworking.registerServerReceiver();
+		RecruitmentNetworking.registerServerReceiver();
 		//block entities do it themselves
 		//registerDispenserThings();
 		ModSounds.registerSounds();
@@ -195,35 +199,9 @@ public class Pirates implements ModInitializer {
 
 	private void registerVillagerRecruitment() {
 		UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
-			VillagerProfession profession;
-			if (!(entity instanceof VillagerEntity villager)
-					|| villager.isBaby()
-					|| ((profession = villager.getVillagerData().getProfession()) != VillagerProfession.NONE
-					&& profession != VillagerProfession.NITWIT)) {
-				return ActionResult.PASS;
-			}
-
-			ItemStack heldStack = player.getStackInHand(hand);
-			ItemStack payment = recruitCost.get();
-			ItemStack contract = new ItemStack(CANNONEER_ITEM);
-			ItemStack boatswainPayment = boatswainRecruitCost.get();
-			ItemStack doctorPayment = doctorRecruitCost.get();
-
-			// Check the more expensive emerald profession first because doctor uses the same item.
-			if (heldStack.isOf(boatswainPayment.getItem()) && heldStack.getCount() >= boatswainPayment.getCount()) {
-				payment = boatswainPayment;
-				contract = new ItemStack(BOATSWAIN_ITEM);
-			} else if (heldStack.isOf(doctorPayment.getItem()) && heldStack.getCount() >= doctorPayment.getCount()) {
-				payment = doctorPayment;
-				contract = new ItemStack(DOCTOR_ITEM);
-			} else if (!heldStack.isOf(payment.getItem()) || heldStack.getCount() < payment.getCount()) {
-				return ActionResult.PASS;
-			}
-
-			if (!world.isClient) {
-				heldStack.decrement(payment.getCount());
-				player.giveItemStack(contract);
-				villager.discard();
+			if (!RecruitmentNetworking.isEligible(entity)) return ActionResult.PASS;
+			if (!world.isClient && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer) {
+				RecruitmentNetworking.open(serverPlayer, entity);
 			}
 			return ActionResult.SUCCESS;
 		});

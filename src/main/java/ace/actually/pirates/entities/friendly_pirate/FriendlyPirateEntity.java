@@ -9,6 +9,7 @@ import ace.actually.pirates.entities.pirate_default.PirateEntity;
 import ace.actually.pirates.util.DisarmUtils;
 import ace.actually.pirates.compat.MusketModCompat;
 import ace.actually.pirates.repair.BoatswainRepairNetworking;
+import ace.actually.pirates.recruitment.RecruitmentNetworking;
 import net.minecraft.entity.*;
 import net.minecraft.entity.ai.RangedAttackMob;
 import net.minecraft.entity.ai.goal.ActiveTargetGoal;
@@ -79,7 +80,8 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
     @Override
     public void readCustomDataFromNbt(NbtCompound nbt) {
         super.readCustomDataFromNbt(nbt);
-        dataTracker.set(JOB,nbt.getString("pirateJob"));
+        String savedJob = nbt.getString("pirateJob");
+        dataTracker.set(JOB, savedJob.isBlank() ? "none" : savedJob);
     }
 
     public FriendlyPirateEntity(World world, BlockPos blockToDisable) {
@@ -157,7 +159,25 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
     }
 
     @Override
+    protected ActionResult interactMob(PlayerEntity player, Hand hand) {
+        if (RecruitmentNetworking.isEligible(this)) {
+            if (!getEntityWorld().isClient
+                    && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer) {
+                RecruitmentNetworking.open(serverPlayer, this);
+            }
+            return ActionResult.SUCCESS;
+        }
+        return super.interactMob(player, hand);
+    }
+    @Override
     public ActionResult interactAt(PlayerEntity player, Vec3d hitPos, Hand hand) {
+        if (RecruitmentNetworking.isEligible(this)) {
+            if (!getEntityWorld().isClient
+                    && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer) {
+                RecruitmentNetworking.open(serverPlayer, this);
+            }
+            return ActionResult.SUCCESS;
+        }
         if (!getEntityWorld().isClient
                 && player.isSneaking()
                 && player.getStackInHand(hand).isEmpty()
@@ -179,18 +199,6 @@ public class FriendlyPirateEntity extends AbstractPirateEntity implements Ranged
                         (net.minecraft.server.network.ServerPlayerEntity) player, this, hand);
             }
             return ActionResult.SUCCESS;
-        }
-        ItemStack stack = Pirates.recruitCost.get();
-        if(!hasCustomName() && player.getStackInHand(hand).isOf(stack.getItem()))
-        {
-            if(player.getStackInHand(hand).getCount()>=stack.getCount())
-            {
-                player.giveItemStack(new ItemStack(Pirates.CANNONEER_ITEM));
-                player.getStackInHand(hand).decrement(stack.getCount());
-                this.teleport(0,0,0);
-                this.kill();
-            }
-
         }
         return super.interactAt(player, hitPos, hand);
     }
