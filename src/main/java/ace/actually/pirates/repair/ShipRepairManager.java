@@ -30,9 +30,9 @@ public final class ShipRepairManager {
         ShipTarget target = resolveTarget(player.getServerWorld(), boatswain);
         if (target.error() != null) return new QuoteResult(null, target.error());
         MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
-        return quote == null
-                ? new QuoteResult(null, "Could not compare this ship with the Eureka blueprints.")
-                : new QuoteResult(quote, null);
+        if (quote == null) return new QuoteResult(null, "Could not compare this ship with the Eureka blueprints.");
+        if (quote.beyondSaving()) return new QuoteResult(null, "This ship is beyond saving");
+        return new QuoteResult(quote, null);
     }
 
     public static RepairResult payAndRepair(ServerPlayerEntity player, Entity boatswain) {
@@ -42,9 +42,10 @@ public final class ShipRepairManager {
         // Recompute at click time so the client quote cannot become authoritative or stale.
         MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
         if (quote == null) return new RepairResult(-1, false, "Could not compare this ship with the Eureka blueprints.");
+        if (quote.beyondSaving()) return RepairResult.BEYOND_SAVING;
         if (quote.repairableBlocks() == 0) return RepairResult.NO_DAMAGE;
 
-        int price = Pirates.shipRepairGoldCost;
+        int price = quote.goldCost();
         if (!player.isCreative() && player.getInventory().count(Items.GOLD_INGOT) < price) {
             return RepairResult.NOT_ENOUGH_GOLD;
         }
@@ -74,14 +75,20 @@ public final class ShipRepairManager {
         }
         if (blueprint == null) return null;
 
+        int eligible = 0;
         int repairable = 0;
         for (ShipBlueprint.Entry entry : blueprint.entries()) {
             if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
             BlockPos pos = anchor.add(entry.relativePos());
-            if (world.isChunkLoaded(pos) && RepairExclusions.needsRepair(world.getBlockState(pos), entry.state())) repairable++;
+            if (!world.isChunkLoaded(pos)) continue;
+            eligible++;
+            if (RepairExclusions.needsRepair(world.getBlockState(pos), entry.state())) repairable++;
         }
+        boolean beyondSaving = eligible > 0 && (long) repairable * 100L >= (long) eligible * 80L;
+        int goldCost = repairable == 0 || eligible == 0 ? 0
+                : Math.max(1, (int) Math.ceil((double) Pirates.shipRepairGoldCost * repairable / eligible));
         return new MotionInvokingBlockEntity.RepairQuote(
-                blueprint.id(), blueprint.rotation(), repairable, existing);
+                blueprint.id(), blueprint.rotation(), repairable, eligible, goldCost, beyondSaving, existing);
     }
 
     private static int repairImmediately(ServerWorld world, ShipTarget target,
@@ -176,6 +183,7 @@ public final class ShipRepairManager {
     public record RepairResult(int repairedBlocks, boolean success, String message) {
         public static final RepairResult NOT_ENOUGH_GOLD = new RepairResult(-1, false, "Insufficient gold");
         public static final RepairResult NO_DAMAGE = new RepairResult(0, false, "No eligible blueprint blocks need repair.");
+        public static final RepairResult BEYOND_SAVING = new RepairResult(-1, false, "This ship is beyond saving");
     }
     private record ShipTarget(Ship ship, BlockPos anchor, String error) {}
     private record Key(String dimension, long shipId) {}

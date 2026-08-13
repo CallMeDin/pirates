@@ -201,7 +201,13 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         }
 
         int repairable = countRepairable(serverWorld, repairBlueprint);
-        return new RepairQuote(repairBlueprint.id(), repairBlueprint.rotation(), repairable, existingBlueprint);
+        int eligible = (int) repairBlueprint.entries().stream()
+                .filter(entry -> !RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())).count();
+        boolean beyondSaving = eligible > 0 && (long) repairable * 100L >= (long) eligible * 80L;
+        int goldCost = repairable == 0 || eligible == 0 ? 0
+                : Math.max(1, (int) Math.ceil((double) Pirates.shipRepairGoldCost * repairable / eligible));
+        return new RepairQuote(repairBlueprint.id(), repairBlueprint.rotation(), repairable,
+                eligible, goldCost, beyondSaving, existingBlueprint);
     }
 
     private int countRepairable(ServerWorld world, ShipBlueprint blueprint) {
@@ -239,7 +245,9 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         return repaired;
     }
 
-    public record RepairQuote(Identifier blueprintId, BlockRotation rotation, int repairableBlocks, boolean existingBlueprint) {}
+    public record RepairQuote(Identifier blueprintId, BlockRotation rotation, int repairableBlocks,
+                              int eligibleBlocks, int goldCost, boolean beyondSaving,
+                              boolean existingBlueprint) {}
     @Override
     protected void writeNbt(NbtCompound nbt) {
         nbt.put("path",path);

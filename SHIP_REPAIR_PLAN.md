@@ -53,13 +53,15 @@ The implementation intentionally restores every other differing blueprint positi
 
 ## Pricing
 
-One repair costs 64 gold ingots by default:
+The configured value is the full-repair price baseline. A quote costs ceil(configured cost x repairable eligible blocks / total eligible blocks), with a minimum of 1 gold when damage exists. If 80% or more of eligible blueprint blocks need repair, the server returns "This ship is beyond saving" and refuses repair.
+
+The full-repair baseline is 64 gold ingots by default:
 
 ```properties
 ship-repair-gold-cost=64
 ```
 
-The full cost may be distributed across any inventory slots. A pristine ship is not charged.
+The calculated cost may be distributed across any inventory slots. A pristine ship is not charged.
 
 ## Coordinate rules
 

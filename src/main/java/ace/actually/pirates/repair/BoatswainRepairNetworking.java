@@ -31,7 +31,7 @@ public final class BoatswainRepairNetworking {
         buf.writeVarInt(boatswain.getId());
         buf.writeIdentifier(quote.blueprintId());
         buf.writeVarInt(quote.repairableBlocks());
-        buf.writeVarInt(Pirates.shipRepairGoldCost);
+        buf.writeVarInt(quote.goldCost());
         buf.writeBoolean(quote.existingBlueprint());
         ServerPlayNetworking.send(player, Pirates.OPEN_BOATSWAIN_REPAIR_PACKET_ID, buf);
     }
