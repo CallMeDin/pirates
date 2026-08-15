@@ -79,6 +79,11 @@ public class Pirates implements ModInitializer {
 
 	public static float baseShotPower;
 	public static float cannonRange;
+	public static int cannonCanFireRange;
+	public static int navalCombatTargetUpdateTicks, navalCombatSteeringUpdateTicks, navalCombatRangeHysteresis;
+	public static int navalCombatPatrolRadius, navalCombatPatrolArrivalDistance;
+	public static double navalCombatBroadsideToleranceDegrees, navalCombatSteeringDeadzoneDegrees;
+	public static float navalCombatMaxRudderImpulse;
 	public static int pursuitDistance;
 	public static boolean shouldEnableFlyingPirates;
 	public static Supplier<ItemStack> recruitCost;
@@ -147,6 +152,15 @@ public class Pirates implements ModInitializer {
 		ConfigUtils.checkConfigs();
 		baseShotPower = Float.parseFloat(ConfigUtils.config.getOrDefault("base-shot-power","2.2"));
 		cannonRange = Float.parseFloat(ConfigUtils.config.getOrDefault("cannon-range","3.2"));
+		cannonCanFireRange = Math.max(31, Integer.parseInt(ConfigUtils.config.getOrDefault("cannon-can-fire-range","80")));
+		navalCombatTargetUpdateTicks = Math.max(1, Integer.parseInt(ConfigUtils.config.getOrDefault("naval-combat-target-update-ticks", "40")));
+		navalCombatSteeringUpdateTicks = Math.max(1, Integer.parseInt(ConfigUtils.config.getOrDefault("naval-combat-steering-update-ticks", "5")));
+		navalCombatRangeHysteresis = Math.max(0, Integer.parseInt(ConfigUtils.config.getOrDefault("naval-combat-range-hysteresis", "8")));
+		navalCombatBroadsideToleranceDegrees = Math.max(1.0, Double.parseDouble(ConfigUtils.config.getOrDefault("naval-combat-broadside-tolerance-degrees", "10")));
+		navalCombatSteeringDeadzoneDegrees = Math.max(1.0, Double.parseDouble(ConfigUtils.config.getOrDefault("naval-combat-steering-deadzone-degrees", "8")));
+		navalCombatMaxRudderImpulse = Math.max(0.1f, Math.min(1.0f, Float.parseFloat(ConfigUtils.config.getOrDefault("naval-combat-max-rudder-impulse", "0.7"))));
+		navalCombatPatrolRadius = Math.max(16, Integer.parseInt(ConfigUtils.config.getOrDefault("naval-combat-patrol-radius", "200")));
+		navalCombatPatrolArrivalDistance = Math.max(2, Integer.parseInt(ConfigUtils.config.getOrDefault("naval-combat-patrol-arrival-distance", "15")));
 		pursuitDistance = Integer.parseInt(ConfigUtils.config.getOrDefault("pursuit-distance","10000"));
 		shouldEnableFlyingPirates = ConfigUtils.config.getOrDefault("should-enable-flying-pirates","false").equals("true");
 

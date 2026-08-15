@@ -80,6 +80,9 @@ public abstract class AbstractPirateEntity extends IllagerEntity {
     public boolean isOnShip() {
         return VSGameUtilsKt.getShipManaging(this) != null;
     }
+    public BlockPos getAssignedStationPos() {
+        return blockToDisable;
+    }
 
     @Override
     public void writeCustomDataToNbt(NbtCompound nbt) {

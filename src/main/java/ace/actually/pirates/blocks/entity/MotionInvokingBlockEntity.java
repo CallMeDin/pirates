@@ -1,6 +1,7 @@
 package ace.actually.pirates.blocks.entity;
 
 import ace.actually.pirates.blocks.MotionInvokingBlock;
+import ace.actually.pirates.combat.ShipCombatController;
 import ace.actually.pirates.util.ConfigUtils;
 import ace.actually.pirates.util.EurekaCompat;
 import ace.actually.pirates.Pirates;
@@ -20,6 +21,7 @@ import net.minecraft.util.BlockRotation;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
@@ -123,36 +125,8 @@ public class MotionInvokingBlockEntity extends BlockEntity {
                         ship.setAttachment(SeatedControllingPlayer.class, seatedControllingPlayer);
                     }
 
-                    if(world.getTimeOfDay()%updateTicks==0) {
-                        if(be.path.isEmpty()) {
-                            List<Ship> ships = VSGameUtilsKt.getAllShips(world).stream().filter(a-> {
-                                if(a.getId()==ship.getId()) return false;
-                                Vector3dc f1 = ship.getTransform().getPositionInWorld();
-                                Vector3dc f2 = a.getTransform().getPositionInWorld();
-                                return f1.distanceSquared(f2)<Pirates.pursuitDistance;
-                            }).toList();
-                            if(!ships.isEmpty()) {
-                                Vector3dc o = ships.get(0).getTransform().getPositionInWorld();
-                                be.setTarget(new int[]{(int) o.x(), (int) o.y(), (int) o.z()});
-                            }
-                        }
-                        else {
-                            int[] v = be.path.getIntArray(0);
-                            be.setTarget(v);
-                            Vector3dc f1 = ship.getTransform().getPositionInWorld();
-                            Vector3dc f2 = new Vector3d(v[0],v[1],v[2]);
-                            if(f1.distanceSquared(f2)<100) {
-                                NbtIntArray nbtInts = (NbtIntArray) be.path.remove(0);
-                                be.path.add(nbtInts);
-                            }
-                        }
-                    }
-
-                    switch (state.get(COMPAT)) {
-                        case 1 -> SailsCompat.moveTowards(be,seatedControllingPlayer,ship);
-                        case 2 -> EurekaCompat.moveTowards(be,seatedControllingPlayer,ship);
-                        default -> be.moveShipForward(ship);
-                    }
+                    Direction combatForward = world.getBlockState(pos.up()).get(HORIZONTAL_FACING).getOpposite();
+                    ShipCombatController.tick((ServerWorld) world, ship, seatedControllingPlayer, combatForward);
                 }
             }
         }
