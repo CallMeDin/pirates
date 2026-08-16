@@ -79,7 +79,7 @@ public final class ShipBlueprint {
         return world.getStructureTemplateManager().getTemplate(id)
                 .flatMap(template -> buildFromTemplate(world, id, template, rotation, null));
     }
-`
+
     /**
      * Matches a template to an already assembled controller. VLib 0.1.1 places the raw
      * structure as a ship, so controller-relative offsets survive relocation into shipyard space.
