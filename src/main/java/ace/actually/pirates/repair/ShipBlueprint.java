@@ -28,13 +28,6 @@ import org.valkyrienskies.core.api.ships.Ship;
 /** Immutable, controller-relative view of one bundled ship structure template. */
 public final class ShipBlueprint {
     private static final BlockRotation[] ROTATIONS = BlockRotation.values();
-    private static final List<Identifier> EUREKA_BLUEPRINT_IDS = List.of(
-            id("anetum-contatum"), id("antelope"), id("barnacle-hopper"),
-            id("deep-sea-moray"), id("eye-of-horus"), id("hispaniola"),
-            id("midnight-barracuda"), id("queen-annes-revenge"), id("revenge"),
-            id("whydah-ghost"), id("whydah")
-    );
-
     private final Identifier id;
     private final BlockRotation rotation;
     private final Map<Long, Entry> entries;
@@ -61,14 +54,23 @@ public final class ShipBlueprint {
         return entries.values();
     }
 
-    public static List<Identifier> eurekaBlueprintIds() {
-        return EUREKA_BLUEPRINT_IDS;
+    public static List<Identifier> eurekaBlueprintIds(ServerWorld world) {
+        return world.getServer().getResourceManager()
+                .findResources("structures/ship", resourceId ->
+                        resourceId.getNamespace().equals("pirates_eureka")
+                                && resourceId.getPath().endsWith(".nbt"))
+                .keySet().stream()
+                .map(resourceId -> new Identifier(resourceId.getNamespace(),
+                        resourceId.getPath().substring("structures/".length(),
+                                resourceId.getPath().length() - ".nbt".length())))
+                .sorted(Comparator.comparing(Identifier::toString))
+                .toList();
     }
 
     public static boolean isEurekaBlueprint(Identifier id) {
-        return EUREKA_BLUEPRINT_IDS.contains(id);
+        return id != null && id.getNamespace().equals("pirates_eureka")
+                && id.getPath().startsWith("ship/");
     }
-
     public int size() {
         return entries.size();
     }
@@ -77,7 +79,7 @@ public final class ShipBlueprint {
         return world.getStructureTemplateManager().getTemplate(id)
                 .flatMap(template -> buildFromTemplate(world, id, template, rotation, null));
     }
-
+`
     /**
      * Matches a template to an already assembled controller. VLib 0.1.1 places the raw
      * structure as a ship, so controller-relative offsets survive relocation into shipyard space.
@@ -86,9 +88,8 @@ public final class ShipBlueprint {
         Match best = null;
         int loadedCandidates = 0;
 
-        // Deliberately load every bundled Eureka NBT by its exact resource ID. Do not
-        // depend on streamTemplates(), which may omit templates from built-in packs.
-        for (Identifier id : EUREKA_BLUEPRINT_IDS) {
+        List<Identifier> blueprintIds = eurekaBlueprintIds(world);
+        for (Identifier id : blueprintIds) {
             Optional<StructureTemplate> optional = world.getStructureTemplateManager().getTemplate(id);
             if (optional.isEmpty()) {
                 Pirates.LOGGER.warn("Eureka repair blueprint {} is not loaded", id);
@@ -111,7 +112,7 @@ public final class ShipBlueprint {
 
         if (best == null || best.matches() == 0) {
             Pirates.LOGGER.warn("No usable Eureka repair blueprint match at {}; loaded {}/{} templates",
-                    controllerPos, loadedCandidates, EUREKA_BLUEPRINT_IDS.size());
+                    controllerPos, loadedCandidates, blueprintIds.size());
             return Optional.empty();
         }
 
@@ -140,7 +141,7 @@ public final class ShipBlueprint {
         if (actualByBlock.isEmpty()) return Optional.empty();
 
         AnchoredMatch best = null;
-        for (Identifier id : EUREKA_BLUEPRINT_IDS) {
+        for (Identifier id : eurekaBlueprintIds(world)) {
             Optional<StructureTemplate> optional = world.getStructureTemplateManager().getTemplate(id);
             if (optional.isEmpty()) continue;
             List<RawEntry> raw = decode(world, optional.get());
