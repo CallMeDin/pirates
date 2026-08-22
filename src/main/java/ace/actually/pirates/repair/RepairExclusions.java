@@ -3,9 +3,8 @@ package ace.actually.pirates.repair;
 import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.MotionInvokingBlock;
 import ace.actually.pirates.util.ConfigUtils;
+import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
-import net.minecraft.block.DoorBlock;
-import net.minecraft.block.TrapdoorBlock;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -17,6 +16,15 @@ import java.util.Set;
 
 /** Shared eligibility policy used by direct blueprint comparison and repair. */
 public final class RepairExclusions {
+    private static final Set<Block> VALUABLE_BLOCKS = Set.of(
+            Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE, Blocks.COAL_BLOCK,
+            Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE, Blocks.IRON_BLOCK, Blocks.RAW_IRON_BLOCK,
+            Blocks.GOLD_ORE, Blocks.DEEPSLATE_GOLD_ORE, Blocks.NETHER_GOLD_ORE,
+            Blocks.GOLD_BLOCK, Blocks.RAW_GOLD_BLOCK,
+            Blocks.EMERALD_ORE, Blocks.DEEPSLATE_EMERALD_ORE, Blocks.EMERALD_BLOCK,
+            Blocks.DIAMOND_ORE, Blocks.DEEPSLATE_DIAMOND_ORE, Blocks.DIAMOND_BLOCK,
+            Blocks.RAW_COPPER_BLOCK, Blocks.COPPER_BLOCK
+    );
     private static Set<Identifier> configuredIds;
 
     private RepairExclusions() {}
@@ -27,26 +35,15 @@ public final class RepairExclusions {
         if (state.isOf(Pirates.MOTION_INVOKING_BLOCK)) return false;
         // Eureka helms also have block entities, but are essential ship structure.
         if (state.getBlock() instanceof ShipHelmBlock) return false;
+        if (VALUABLE_BLOCKS.contains(state.getBlock())) return true;
         if (state.hasBlockEntity() || templateHasBlockEntity) return true;
         return configuredIds().contains(Registries.BLOCK.getId(state.getBlock()));
     }
 
 
-    /**
-     * Open/closed door and trapdoor states are player interaction, not ship damage.
-     * A genuinely missing or replaced door still differs by block type and is repaired.
-     */
+    /** Repair is strictly additive: preserve every occupied position on the ship. */
     public static boolean needsRepair(BlockState current, BlockState blueprint) {
-        if (current.equals(blueprint)) return false;
-        // ARMED is runtime behavior, not structural damage. Repaired invokers stay disarmed.
-        if (current.isOf(Pirates.MOTION_INVOKING_BLOCK)
-                && blueprint.isOf(Pirates.MOTION_INVOKING_BLOCK)) return false;
-        if (current.getBlock() == blueprint.getBlock()
-                && (blueprint.getBlock() instanceof DoorBlock
-                || blueprint.getBlock() instanceof TrapdoorBlock)) {
-            return false;
-        }
-        return true;
+        return current.isAir() && !blueprint.isAir();
     }
     /** Returns the safe state placed by ship repair. Manual item placement is unchanged. */
     public static BlockState repairState(BlockState blueprint) {

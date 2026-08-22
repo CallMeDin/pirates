@@ -89,7 +89,7 @@ public class Pirates implements ModInitializer {
 	public static Supplier<ItemStack> recruitCost;
 	public static Supplier<ItemStack> doctorRecruitCost;
 	public static Supplier<ItemStack> boatswainRecruitCost;
-	public static int shipRepairGoldCost;
+	public static int shipRepairBlocksPerGold;
 	public static CompatTracker loadedCompats = new CompatTracker();
 
 	@Override
@@ -170,7 +170,8 @@ public class Pirates implements ModInitializer {
 		doctorRecruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(drc[0])),Integer.parseInt(drc[1]));
 		String[] brc = ConfigUtils.config.getOrDefault("boatswain-recruit-cost","minecraft:emerald,10").split(",");
 		boatswainRecruitCost = () -> new ItemStack(Registries.ITEM.get(Identifier.tryParse(brc[0])),Integer.parseInt(brc[1]));
-		shipRepairGoldCost = Integer.parseInt(ConfigUtils.config.getOrDefault("ship-repair-gold-cost", "64"));
+		shipRepairBlocksPerGold = Math.max(1,
+				Integer.parseInt(ConfigUtils.config.getOrDefault("ship-repair-blocks-per-gold", "10")));
 
 		registerEntityThings();
 		//entity types do it themselves

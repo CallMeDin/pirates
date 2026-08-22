@@ -42,7 +42,7 @@ dependencies {
 	modImplementation "maven.modrinth:valkyrien-skies:1.20.1-fabric-2.4.11"
 	modImplementation "maven.modrinth:eureka:1.20.1-fabric-1.6.3"
 	modImplementation "maven.modrinth:vlib:1.20.1-0.1.1"
-	modImplementation "maven.modrinth:valkyrien-sails:1.20.1-0.1.7-fabric"
+	modImplementation "maven.modrinth:valkyrien-sails:1.20.1-0.3.2-fabric"
 	modCompileOnly "maven.modrinth:musket-mod:1.5.4"
 
 	modImplementation "maven.modrinth:architectury-api:9.2.14+fabric"

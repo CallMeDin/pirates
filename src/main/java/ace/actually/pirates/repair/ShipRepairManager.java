@@ -85,8 +85,9 @@ public final class ShipRepairManager {
             if (RepairExclusions.needsRepair(world.getBlockState(pos), entry.state())) repairable++;
         }
         boolean beyondSaving = eligible > 0 && (long) repairable * 100L >= (long) eligible * 80L;
-        int goldCost = repairable == 0 || eligible == 0 ? 0
-                : Math.max(1, (int) Math.ceil((double) Pirates.shipRepairGoldCost * repairable / eligible));
+        int goldCost = repairable == 0 ? 0
+                : (int) Math.max(1L, ((long) repairable + Pirates.shipRepairBlocksPerGold - 1L)
+                        / Pirates.shipRepairBlocksPerGold);
         return new MotionInvokingBlockEntity.RepairQuote(
                 blueprint.id(), blueprint.rotation(), repairable, eligible, goldCost, beyondSaving, existing);
     }

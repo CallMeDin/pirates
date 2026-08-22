@@ -178,8 +178,9 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         int eligible = (int) repairBlueprint.entries().stream()
                 .filter(entry -> !RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())).count();
         boolean beyondSaving = eligible > 0 && (long) repairable * 100L >= (long) eligible * 80L;
-        int goldCost = repairable == 0 || eligible == 0 ? 0
-                : Math.max(1, (int) Math.ceil((double) Pirates.shipRepairGoldCost * repairable / eligible));
+        int goldCost = repairable == 0 ? 0
+                : (int) Math.max(1L, ((long) repairable + Pirates.shipRepairBlocksPerGold - 1L)
+                        / Pirates.shipRepairBlocksPerGold);
         return new RepairQuote(repairBlueprint.id(), repairBlueprint.rotation(), repairable,
                 eligible, goldCost, beyondSaving, existingBlueprint);
     }

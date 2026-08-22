@@ -37,7 +37,7 @@
 	},
 	"suggests": {
 		"musketmod": "*",
-		"vs_sails": ">=0.1.7",
+		"vs_sails": ">=0.3.2",
 		"eureka": "*"
 	}
 }

@@ -124,7 +124,8 @@ public class ConfigUtils {
         defaults.add("boatswain-recruit-cost=minecraft:emerald,10");
         defaults.add("");
         defaults.add("#gold ingots charged for one full eligible ship repair run");
-        defaults.add("ship-repair-gold-cost=64");
+        defaults.add("#Number of missing ship blocks repaired per gold ingot; cost has no maximum");
+        defaults.add("ship-repair-blocks-per-gold=10");
         defaults.add("");
         defaults.add("#comma-separated block IDs never entered into a repair queue");
         defaults.add("ship-repair-excluded-blocks=");
