@@ -4,6 +4,7 @@ import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.CannonPrimingBlock;
 import ace.actually.pirates.repair.PiratesShipBlueprintState;
 import ace.actually.pirates.repair.ShipBlueprint;
+import ace.actually.pirates.util.SailsCompat;
 import g_mungus.vlib.v2.api.extension.ShipExtKt;
 import kotlin.Unit;
 import net.minecraft.block.BlockState;
@@ -33,7 +34,7 @@ public final class ShipCombatController {
     private ShipCombatController() {}
 
     public static void tick(ServerWorld world, LoadedServerShip ship, SeatedControllingPlayer controls,
-                            Direction shipForward) {
+                            Direction shipForward, boolean sailsControl, BlockPos helmPos) {
         if (controls == null || shipForward.getAxis().isVertical()) return;
         Key key = new Key(world.getRegistryKey().getValue().toString(), ship.getId());
         State state = STATES.computeIfAbsent(key, ignored -> new State());
@@ -73,10 +74,11 @@ public final class ShipCombatController {
         }
 
         if (time < state.nextSteeringUpdate) return;
-        state.nextSteeringUpdate = time + Pirates.navalCombatSteeringUpdateTicks;
+        state.nextSteeringUpdate = time + (sailsControl ? 1 : Pirates.navalCombatSteeringUpdateTicks);
 
         if (state.mode == Mode.FLEEING) {
-            steer(ship, controls, state, shipForward, state.fleeX, state.fleeZ, 1.0f);
+            steer(world, helmPos, sailsControl, ship, controls, state,
+                    shipForward, state.fleeX, state.fleeZ, 1.0f);
             return;
         }
 
@@ -85,7 +87,7 @@ public final class ShipCombatController {
         if (!isValidTarget(world, ship, target)) {
             state.targetShipId = -1L;
             state.chosenSide = null;
-            patrol(ship, controls, state, own, shipForward);
+            patrol(world, helmPos, sailsControl, ship, controls, state, own, shipForward);
             return;
         }
 
@@ -100,7 +102,8 @@ public final class ShipCombatController {
         int totalCannons = state.operational.values().stream().mapToInt(Integer::intValue).sum();
         if (totalCannons == 0) {
             beginFleeing(ship, target, state);
-            steer(ship, controls, state, shipForward, state.fleeX, state.fleeZ, 1.0f);
+            steer(world, helmPos, sailsControl, ship, controls, state,
+                    shipForward, state.fleeX, state.fleeZ, 1.0f);
             return;
         }
 
@@ -119,7 +122,8 @@ public final class ShipCombatController {
         if (firingDistanceSquared > allowedRange * allowedRange) {
             state.mode = Mode.CHASE;
             state.chosenSide = null;
-            steer(ship, controls, state, shipForward, chaseX, chaseZ, 1.0f);
+            steer(world, helmPos, sailsControl, ship, controls, state,
+                    shipForward, chaseX, chaseZ, 1.0f);
             return;
         }
 
@@ -131,7 +135,7 @@ public final class ShipCombatController {
             targetFromBroadside = solution == null ? null : solution.targetDirection();
         }
         if (targetFromBroadside == null || Math.hypot(targetFromBroadside.x, targetFromBroadside.z) < 0.001) {
-            stopShip(ship, controls);
+            stopShip(world, helmPos, sailsControl, ship, controls);
             return;
         }
 
@@ -140,11 +144,11 @@ public final class ShipCombatController {
 
         if (absoluteError <= Pirates.navalCombatBroadsideToleranceDegrees) {
             state.mode = Mode.HOLD_BROADSIDE;
-            stopShip(ship, controls);
+            stopShip(world, helmPos, sailsControl, ship, controls);
         } else {
             state.mode = Mode.ALIGN_BROADSIDE;
             // Rotate in place; do not add forward motion while obtaining the firing solution.
-            turnByError(ship, controls, state, error, 0.38f);
+            turnByError(world, helmPos, sailsControl, ship, controls, state, error, 0.38f);
         }
     }
 
@@ -273,25 +277,24 @@ public final class ShipCombatController {
                 Math.max(-1.0, Math.min(1.0, currentX * desiredX + currentZ * desiredZ)));
     }
 
-    private static void turnByError(LoadedServerShip ship, SeatedControllingPlayer controls,
+    private static void turnByError(ServerWorld world, BlockPos helmPos, boolean sailsControl,
+                                    LoadedServerShip ship, SeatedControllingPlayer controls,
                                     State state, double error, float maxRudder) {
         double errorDegrees = Math.toDegrees(error);
         float rudder = (float) Math.max(-maxRudder, Math.min(maxRudder,
                 -errorDegrees / 90.0 * maxRudder));
         state.lastRudder = rudder;
-        controls.setForwardImpulse(0.0f);
-        controls.setLeftImpulse(rudder);
-        ship.setAttachment(SeatedControllingPlayer.class, controls);
+        applyControls(world, helmPos, sailsControl, ship, controls, 0.0f, rudder);
     }
 
-    private static void stopShip(LoadedServerShip ship, SeatedControllingPlayer controls) {
-        controls.setForwardImpulse(0.0f);
-        controls.setLeftImpulse(0.0f);
-        ship.setAttachment(SeatedControllingPlayer.class, controls);
+    private static void stopShip(ServerWorld world, BlockPos helmPos, boolean sailsControl,
+                                 LoadedServerShip ship, SeatedControllingPlayer controls) {
+        applyControls(world, helmPos, sailsControl, ship, controls, 0.0f, 0.0f);
     }
 
     /** Returns signed angular error in radians. */
-    private static double steer(LoadedServerShip ship, SeatedControllingPlayer controls,
+    private static double steer(ServerWorld world, BlockPos helmPos, boolean sailsControl,
+                                LoadedServerShip ship, SeatedControllingPlayer controls,
                                 State state, Direction localForward, double desiredX, double desiredZ, float forwardImpulse) {
         double length = Math.hypot(desiredX, desiredZ);
         if (length < 0.001) return 0.0;
@@ -307,8 +310,6 @@ public final class ShipCombatController {
         double cross = currentX * desiredZ - currentZ * desiredX;
         double dot = Math.max(-1.0, Math.min(1.0, currentX * desiredX + currentZ * desiredZ));
         double error = Math.atan2(cross, dot);
-
-        controls.setForwardImpulse(forwardImpulse);
         double errorDegrees = Math.toDegrees(error);
         double absoluteError = Math.abs(errorDegrees);
         float rudder;
@@ -328,42 +329,21 @@ public final class ShipCombatController {
                 state.lastRudder = rudder;
             }
         }
-        controls.setLeftImpulse(rudder);
-        ship.setAttachment(SeatedControllingPlayer.class, controls);
+        applyControls(world, helmPos, sailsControl, ship, controls, forwardImpulse, rudder);
         return error;
     }
 
-    /** Low-gain curvature controller used only while circling for a broadside. */
-    private static double steerOrbit(LoadedServerShip ship, SeatedControllingPlayer controls,
-                                     State state, Direction localForward,
-                                     double desiredX, double desiredZ,
-                                     float forwardImpulse, float maxRudder) {
-        double length = Math.hypot(desiredX, desiredZ);
-        if (length < 0.001) return 0.0;
-        desiredX /= length;
-        desiredZ /= length;
-        Vector3d current = ship.getTransform().getShipToWorldRotation()
-                .transform(new Vector3d(localForward.getOffsetX(), 0, localForward.getOffsetZ()));
-        double currentLength = Math.hypot(current.x, current.z);
-        if (currentLength < 0.001) return 0.0;
-        double currentX = current.x / currentLength;
-        double currentZ = current.z / currentLength;
-        double error = Math.atan2(currentX * desiredZ - currentZ * desiredX,
-                Math.max(-1.0, Math.min(1.0, currentX * desiredX + currentZ * desiredZ)));
-        double errorDegrees = Math.toDegrees(error);
-
-        float rudder = 0.0f;
-        if (Math.abs(errorDegrees) > 2.5) {
-            rudder = (float) Math.max(-maxRudder, Math.min(maxRudder,
-                    -errorDegrees / 90.0 * maxRudder));
+    private static void applyControls(ServerWorld world, BlockPos helmPos, boolean sailsControl,
+                                      LoadedServerShip ship, SeatedControllingPlayer controls,
+                                      float forwardImpulse, float rudder) {
+        if (sailsControl) {
+            SailsCompat.steerHelm(world, helmPos, ship, controls, rudder);
+            return;
         }
-        state.lastRudder = rudder;
         controls.setForwardImpulse(forwardImpulse);
         controls.setLeftImpulse(rudder);
         ship.setAttachment(SeatedControllingPlayer.class, controls);
-        return error;
     }
-
     private static void beginFleeing(LoadedServerShip ship, Ship enemy, State state) {
         var ownBounds = ship.getWorldAABB();
         var enemyBounds = enemy.getWorldAABB();
@@ -392,7 +372,8 @@ public final class ShipCombatController {
         state.chosenSide = null;
         state.lastRudder = 0.0f;
     }
-    private static void patrol(LoadedServerShip ship, SeatedControllingPlayer controls,
+    private static void patrol(ServerWorld world, BlockPos helmPos, boolean sailsControl,
+                               LoadedServerShip ship, SeatedControllingPlayer controls,
                                State state, Vector3dc own, Direction localForward) {
         double radius = Pirates.navalCombatPatrolRadius;
         if (state.patrolCenter == null || state.mode != Mode.PATROL) {
@@ -432,7 +413,8 @@ public final class ShipCombatController {
         double desiredZ = tangentZ + radialZ * radialCorrection;
 
         state.mode = Mode.PATROL;
-        steer(ship, controls, state, localForward, desiredX, desiredZ, 0.65f);
+        steer(world, helmPos, sailsControl, ship, controls, state,
+                localForward, desiredX, desiredZ, 0.65f);
     }
     private static Ship closestHostile(ServerWorld world, LoadedServerShip own) {
         Ship best = null;

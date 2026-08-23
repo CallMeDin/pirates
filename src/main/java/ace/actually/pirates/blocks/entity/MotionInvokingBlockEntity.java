@@ -46,6 +46,9 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     private BlockRotation legacyRepairBlueprintRotation = BlockRotation.NONE;
     private transient ShipBlueprint repairBlueprint;
     private transient long nextBlueprintMatchAttempt = 0L;
+    private transient ShipBlueprint sailsAssemblyBlueprint;
+    private transient long nextSailsAssemblyAttempt = 0L;
+    private boolean generatedSailsShip;
     //boolean isChecked = false;
 
     //variables below this line aren't serialised because they don't need to be.
@@ -66,7 +69,10 @@ public class MotionInvokingBlockEntity extends BlockEntity {
 //    }
 
     public static void tick(World world, BlockPos pos, BlockState state, MotionInvokingBlockEntity be) {
-        if (world instanceof ServerWorld serverWorld) be.tickRepairController(serverWorld);
+        if (world instanceof ServerWorld serverWorld) {
+            if (be.tryAssembleSailsShip(serverWorld, pos)) return;
+            be.tickRepairController(serverWorld);
+        }
 
 //        if (!be.isChecked) {
 //            state.with(COMPAT, 0);
@@ -126,12 +132,26 @@ public class MotionInvokingBlockEntity extends BlockEntity {
                     }
 
                     Direction combatForward = world.getBlockState(pos.up()).get(HORIZONTAL_FACING).getOpposite();
-                    ShipCombatController.tick((ServerWorld) world, ship, seatedControllingPlayer, combatForward);
+                    boolean sailsControl = state.get(COMPAT).equals(1);
+                    ShipCombatController.tick((ServerWorld) world, ship, seatedControllingPlayer,
+                            combatForward, sailsControl, pos.up());
                 }
             }
         }
     }
 
+    private boolean tryAssembleSailsShip(ServerWorld world, BlockPos origin) {
+        if (!generatedSailsShip || !Pirates.loadedCompats.sails || VSGameUtilsKt.isBlockInShipyard(world, origin)
+                || !SailsCompat.checkHelm(world, origin) || world.getTime() < nextSailsAssemblyAttempt) {
+            return false;
+        }
+        nextSailsAssemblyAttempt = world.getTime() + 100L;
+        if (sailsAssemblyBlueprint == null) {
+            sailsAssemblyBlueprint = ShipBlueprint.matchSails(world, origin).orElse(null);
+        }
+        return sailsAssemblyBlueprint != null
+                && SailsCompat.assembleFromBlueprint(world, origin, sailsAssemblyBlueprint);
+    }
     private void tickRepairController(ServerWorld world) {
         Ship ship = VSGameUtilsKt.getShipManagingPos(world, pos);
         if (ship == null) return;
@@ -155,7 +175,9 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     private void loadSavedRepairBlueprint(ServerWorld world, long shipId) {
         if (repairBlueprint != null) return;
         var record = PiratesShipBlueprintState.get(world).get(world, shipId);
-        if (record != null) {
+        if (record != null && (Pirates.loadedCompats.sails
+                ? ShipBlueprint.isSailsBlueprint(record.blueprintId())
+                : ShipBlueprint.isEurekaBlueprint(record.blueprintId()))) {
             repairBlueprint = ShipBlueprint.load(world, record.blueprintId(), record.rotation()).orElse(null);
         }
     }
@@ -168,7 +190,9 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         loadSavedRepairBlueprint(serverWorld, shipId);
         boolean existingBlueprint = repairBlueprint != null;
         if (!existingBlueprint) {
-            repairBlueprint = ShipBlueprint.match(serverWorld, pos).orElse(null);
+            repairBlueprint = (Pirates.loadedCompats.sails
+                    ? ShipBlueprint.matchSails(serverWorld, pos)
+                    : ShipBlueprint.match(serverWorld, pos)).orElse(null);
             if (repairBlueprint == null) return null;
             PiratesShipBlueprintState.get(serverWorld).put(serverWorld, shipId,
                     repairBlueprint.id(), repairBlueprint.rotation(), pos);
@@ -199,7 +223,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     /** Returns -1 when unavailable, otherwise the number of replaced blueprint blocks. */
     public int repairImmediately(RepairQuote quote) {
         if (!(world instanceof ServerWorld serverWorld) || quote == null
-                || !ShipBlueprint.isEurekaBlueprint(quote.blueprintId())) return -1;
+                || !ShipBlueprint.isRepairBlueprint(quote.blueprintId())) return -1;
         repairBlueprint = ShipBlueprint.load(serverWorld, quote.blueprintId(), quote.rotation()).orElse(null);
         if (repairBlueprint == null) return -1;
         Ship ship = VSGameUtilsKt.getShipManagingPos(serverWorld, pos);
@@ -228,6 +252,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         nbt.put("path",path);
         nbt.putLong("nextInstruction", nextInstruction);
         nbt.putIntArray("target",target);
+        nbt.putBoolean("piratesGeneratedSailsShip", generatedSailsShip);
         super.writeNbt(nbt);
     }
 
@@ -235,6 +260,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     public void readNbt(NbtCompound nbt) {
         super.readNbt(nbt);
         nextInstruction = nbt.getLong("nextInstruction");
+        generatedSailsShip = nbt.getBoolean("piratesGeneratedSailsShip");
         if(nbt.contains("path")) {
             path = (NbtList) nbt.get("path");
         }

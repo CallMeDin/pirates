@@ -15,6 +15,7 @@ import ace.actually.pirates.items.TestItem;
 import ace.actually.pirates.repair.BoatswainRepairNetworking;
 import ace.actually.pirates.sound.ModSounds;
 import ace.actually.pirates.util.ConfigUtils;
+import ace.actually.pirates.worldgen.GeneratedSailsShipMarkerProcessor;
 import g_mungus.vlib.VLib;
 import g_mungus.vlib.api.VLibGameUtils;
 import net.fabricmc.api.ModInitializer;
@@ -44,6 +45,7 @@ import net.minecraft.item.*;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.structure.processor.StructureProcessorType;
 import net.minecraft.sound.BlockSoundGroup;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.text.Text;
@@ -91,6 +93,10 @@ public class Pirates implements ModInitializer {
 	public static Supplier<ItemStack> boatswainRecruitCost;
 	public static int shipRepairBlocksPerGold;
 	public static CompatTracker loadedCompats = new CompatTracker();
+	public static final StructureProcessorType<GeneratedSailsShipMarkerProcessor> GENERATED_SAILS_SHIP_MARKER_PROCESSOR =
+			Registry.register(Registries.STRUCTURE_PROCESSOR,
+					new Identifier(MOD_ID, "generated_sails_ship_marker"),
+					() -> GeneratedSailsShipMarkerProcessor.CODEC);
 
 	@Override
 	public void onInitialize() {

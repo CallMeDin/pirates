@@ -55,9 +55,17 @@ public final class ShipBlueprint {
     }
 
     public static List<Identifier> eurekaBlueprintIds(ServerWorld world) {
+        return blueprintIds(world, "pirates_eureka");
+    }
+
+    public static List<Identifier> sailsBlueprintIds(ServerWorld world) {
+        return blueprintIds(world, "pirates_sails");
+    }
+
+    private static List<Identifier> blueprintIds(ServerWorld world, String namespace) {
         return world.getServer().getResourceManager()
                 .findResources("structures/ship", resourceId ->
-                        resourceId.getNamespace().equals("pirates_eureka")
+                        resourceId.getNamespace().equals(namespace)
                                 && resourceId.getPath().endsWith(".nbt"))
                 .keySet().stream()
                 .map(resourceId -> new Identifier(resourceId.getNamespace(),
@@ -70,6 +78,15 @@ public final class ShipBlueprint {
     public static boolean isEurekaBlueprint(Identifier id) {
         return id != null && id.getNamespace().equals("pirates_eureka")
                 && id.getPath().startsWith("ship/");
+    }
+
+    public static boolean isSailsBlueprint(Identifier id) {
+        return id != null && id.getNamespace().equals("pirates_sails")
+                && id.getPath().startsWith("ship/");
+    }
+
+    public static boolean isRepairBlueprint(Identifier id) {
+        return isEurekaBlueprint(id) || isSailsBlueprint(id);
     }
     public int size() {
         return entries.size();
@@ -85,14 +102,24 @@ public final class ShipBlueprint {
      * structure as a ship, so controller-relative offsets survive relocation into shipyard space.
      */
     public static Optional<ShipBlueprint> match(ServerWorld world, BlockPos controllerPos) {
+        return matchAt(world, controllerPos, eurekaBlueprintIds(world), "Eureka", false);
+    }
+
+    /** Strict match used before assembling a raw, naturally generated Sails structure. */
+    public static Optional<ShipBlueprint> matchSails(ServerWorld world, BlockPos controllerPos) {
+        return matchAt(world, controllerPos, sailsBlueprintIds(world), "Sails", true);
+    }
+
+    private static Optional<ShipBlueprint> matchAt(ServerWorld world, BlockPos controllerPos,
+                                                    List<Identifier> blueprintIds, String kind,
+                                                    boolean requireAssemblyCoverage) {
         Match best = null;
         int loadedCandidates = 0;
 
-        List<Identifier> blueprintIds = eurekaBlueprintIds(world);
         for (Identifier id : blueprintIds) {
             Optional<StructureTemplate> optional = world.getStructureTemplateManager().getTemplate(id);
             if (optional.isEmpty()) {
-                Pirates.LOGGER.warn("Eureka repair blueprint {} is not loaded", id);
+                Pirates.LOGGER.warn("{} ship blueprint {} is not loaded", kind, id);
                 continue;
             }
             loadedCandidates++;
@@ -110,25 +137,45 @@ public final class ShipBlueprint {
             }
         }
 
-        if (best == null || best.matches() == 0) {
-            Pirates.LOGGER.warn("No usable Eureka repair blueprint match at {}; loaded {}/{} templates",
-                    controllerPos, loadedCandidates, blueprintIds.size());
+        int expected = best == null ? 0 : comparableBlocks(best.blueprint());
+        if (best == null || best.matches() == 0
+                || (requireAssemblyCoverage && (expected == 0
+                || (long) best.matches() * 100L < (long) expected * 90L))) {
+            Pirates.LOGGER.warn("No safe {} ship blueprint match at {}; loaded {}/{} templates",
+                    kind, controllerPos, loadedCandidates, blueprintIds.size());
             return Optional.empty();
         }
 
         double similarity = best.compared() == 0 ? 0.0 : best.matches() * 100.0 / best.compared();
-        Pirates.LOGGER.info("Selected highest-similarity Eureka blueprint {} rotation={} similarity={}% ({}/{}) at {}",
-                best.blueprint().id(), best.blueprint().rotation(), String.format(java.util.Locale.ROOT, "%.2f", similarity),
-                best.matches(), best.compared(), controllerPos);
+        Pirates.LOGGER.info("Selected highest-similarity {} blueprint {} rotation={} similarity={}% ({}/{}, coverage {}/{}) at {}",
+                kind, best.blueprint().id(), best.blueprint().rotation(),
+                String.format(java.util.Locale.ROOT, "%.2f", similarity),
+                best.matches(), best.compared(), best.matches(), expected, controllerPos);
         return Optional.of(best.blueprint());
     }
 
+    private static int comparableBlocks(ShipBlueprint blueprint) {
+        int count = 0;
+        for (Entry entry : blueprint.entries.values()) {
+            if (!entry.state().isAir() && !entry.state().isOf(Pirates.MOTION_INVOKING_BLOCK)) count++;
+        }
+        return count;
+    }
     /**
      * Finds both blueprint and controller-relative anchor from the ship's remaining
      * blocks. The controller itself is only a coordinate convention in the NBT and
      * does not need to exist on the assembled ship.
      */
     public static Optional<ShipMatch> match(ServerWorld world, Ship ship) {
+        return matchShip(world, ship, eurekaBlueprintIds(world), "Eureka");
+    }
+
+    public static Optional<ShipMatch> matchSails(ServerWorld world, Ship ship) {
+        return matchShip(world, ship, sailsBlueprintIds(world), "Sails");
+    }
+
+    private static Optional<ShipMatch> matchShip(ServerWorld world, Ship ship,
+                                                  List<Identifier> blueprintIds, String kind) {
         Map<Block, List<BlockPos>> actualByBlock = new HashMap<>();
         ShipExtKt.forEachBlock(ship, pos -> {
             BlockState state = world.getBlockState(pos);
@@ -141,7 +188,7 @@ public final class ShipBlueprint {
         if (actualByBlock.isEmpty()) return Optional.empty();
 
         AnchoredMatch best = null;
-        for (Identifier id : eurekaBlueprintIds(world)) {
+        for (Identifier id : blueprintIds) {
             Optional<StructureTemplate> optional = world.getStructureTemplateManager().getTemplate(id);
             if (optional.isEmpty()) continue;
             List<RawEntry> raw = decode(world, optional.get());
@@ -186,13 +233,13 @@ public final class ShipBlueprint {
         }
 
         if (best == null || best.match().matches() == 0) {
-            Pirates.LOGGER.warn("No usable Eureka blueprint could be aligned to VS ship {}", ship.getId());
+            Pirates.LOGGER.warn("No usable {} blueprint could be aligned to VS ship {}", kind, ship.getId());
             return Optional.empty();
         }
         Match score = best.match();
         double similarity = score.compared() == 0 ? 0.0 : score.matches() * 100.0 / score.compared();
-        Pirates.LOGGER.info("Aligned Eureka blueprint {} rotation={} to VS ship {} at {} similarity={}% ({}/{})",
-                score.blueprint().id(), score.blueprint().rotation(), ship.getId(), best.anchor(),
+        Pirates.LOGGER.info("Aligned {} blueprint {} rotation={} to VS ship {} at {} similarity={}% ({}/{})",
+                kind, score.blueprint().id(), score.blueprint().rotation(), ship.getId(), best.anchor(),
                 String.format(java.util.Locale.ROOT, "%.2f", similarity), score.matches(), score.compared());
         return Optional.of(new ShipMatch(score.blueprint(), best.anchor()));
     }

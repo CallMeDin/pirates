@@ -102,7 +102,7 @@ When the target is outside cannon range:
 
 - Clear the selected firing side.
 - Point the bow toward the center of the target's world-space AABB.
-- Apply full forward input (`1.0`).
+- Eureka control applies full forward input (`1.0`). Valkyrien Sails control leaves forward input untouched and uses wind propulsion.
 - Use proportional signed-angle steering with a configurable deadzone and maximum rudder impulse.
 - Recalculate steering every `naval-combat-steering-update-ticks`.
 
@@ -118,12 +118,25 @@ When the target enters range, select a firing side and build the solution from t
 
 This avoids inferring the firing angle from hull dimensions, helm direction, or the target blueprint.
 
-While angular error exceeds `naval-combat-broadside-tolerance-degrees`, the ship enters `ALIGN_BROADSIDE` and rotates in place with no forward input.
+While angular error exceeds `naval-combat-broadside-tolerance-degrees`, the ship enters `ALIGN_BROADSIDE`. Eureka control rotates in place with zero forward input. Valkyrien Sails control adjusts only the Sails helm wheel while wind may continue moving or drifting the ship.
 
-Once aligned, it enters `HOLD_BROADSIDE` and sets both forward and turning input to zero. It remains stopped while the target stays within the hysteresis-adjusted firing range and the broadside remains aligned.
+Once aligned, it enters `HOLD_BROADSIDE`. Eureka control sets both forward and turning input to zero. Valkyrien Sails control returns the helm wheel to center without modifying propulsion, so wind may continue moving or drifting the ship.
 
 The combat controller never commands cannons to fire. Each cannon continues using its existing autonomous reload, targeting, raycast, faction, and `canFire` behavior.
 
+## Valkyrien Sails steering
+
+When the Motion Invoking Block has Sails compatibility (`COMPAT == 1`), the AI never writes `forwardImpulse`. Valkyrien Sails wind and sail physics remain solely responsible for propulsion.
+
+The Sails helm reads `SeatedControllingPlayer.leftImpulse` as an instruction to rotate its persistent wheel, not as a direct rudder amount. The AI therefore:
+
+1. Converts its desired rudder amount into a target wheel angle.
+2. Reads the actual `BaseHelmBlockEntity` wheel angle.
+3. Pulses left or right until the target angle is reached.
+4. Targets the centered wheel angle while holding a broadside.
+5. Updates Sails steering every server tick so the wheel does not run to full lock or oscillate around a coarse target.
+
+Eureka ships retain the existing direct forward-and-rudder input behavior.
 ## Range hysteresis
 
 The normal engagement distance is `cannon-can-fire-range`. Once aligning or holding a broadside, the allowed distance becomes:
@@ -141,9 +154,9 @@ When both broadsides are below half strength, or when no operational cannon rema
 1. Calculate the direction directly away from the current enemy.
 2. Randomize it within plus or minus 60 degrees while keeping it in the away-facing hemisphere.
 3. Store that heading once.
-4. Apply full forward input (`1.0`) indefinitely.
+4. Eureka control applies full forward input (`1.0`) indefinitely. Valkyrien Sails control changes only the helm wheel and leaves propulsion to the wind.
 
-Fleeing does not increase maximum speed, acceleration, sail power, or physics force. It uses the same full forward input as chasing.
+Fleeing does not increase maximum speed, acceleration, sail power, or physics force. Eureka uses the same full forward input as chasing; Sails propulsion remains wind-driven.
 
 The flee heading is not continuously recalculated, so the ship proceeds in a straight escape direction instead of oscillating around the enemy.
 
@@ -153,7 +166,7 @@ When no valid target exists, the ship uses a bounded holding circle instead of r
 
 1. Establish a circle center from the current position, heading, and configured patrol radius.
 2. Randomly choose clockwise or counterclockwise travel.
-3. Steer along the circle tangent at 65% forward input.
+3. Steer along the circle tangent. Eureka control uses 65% forward input; Valkyrien Sails control changes only the helm wheel.
 4. Apply a limited radial correction when physics pushes the ship inside or outside the desired radius.
 5. Create a new patrol circle after combat ends and the ship returns to patrol.
 
@@ -220,7 +233,7 @@ These limitations are acceptable for ordinary fleets but should be addressed bef
 
 - A ship without a hostile target follows a bounded circular patrol.
 - A ship retains its valid target instead of switching whenever another enemy becomes closer.
-- Outside firing range, the ship pursues with its bow and full forward input.
+- Outside firing range, the ship pursues with its bow; Eureka uses full forward input while Sails remains wind-driven.
 - Operational cannon counts come from armed activator state, not entity scanning.
 - Inside firing range, the strongest broadside turns until its real cannon-row aim faces the enemy.
 - An aligned ship stops movement and rotation while its target remains in range.

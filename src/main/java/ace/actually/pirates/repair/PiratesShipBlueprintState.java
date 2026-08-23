@@ -49,7 +49,7 @@ public final class PiratesShipBlueprintState extends PersistentState {
         for (int i = 0; i < list.size(); i++) {
             NbtCompound entry = list.getCompound(i);
             Identifier blueprintId = Identifier.tryParse(entry.getString("blueprint"));
-            if (blueprintId == null || !ShipBlueprint.isEurekaBlueprint(blueprintId)) continue;
+            if (!ShipBlueprint.isRepairBlueprint(blueprintId)) continue;
             BlockRotation rotation;
             try {
                 rotation = BlockRotation.valueOf(entry.getString("rotation"));

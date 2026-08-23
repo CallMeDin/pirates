@@ -30,7 +30,7 @@ public final class ShipRepairManager {
         ShipTarget target = resolveTarget(player.getServerWorld(), boatswain);
         if (target.error() != null) return new QuoteResult(null, target.error());
         MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
-        if (quote == null) return new QuoteResult(null, "Could not compare this ship with the Eureka blueprints.");
+        if (quote == null) return new QuoteResult(null, "Could not compare this ship with the available blueprints.");
         if (quote.beyondSaving()) return new QuoteResult(null, "This ship is beyond saving");
         return new QuoteResult(quote, null);
     }
@@ -41,7 +41,7 @@ public final class ShipRepairManager {
 
         // Recompute at click time so the client quote cannot become authoritative or stale.
         MotionInvokingBlockEntity.RepairQuote quote = createRepairQuote(player.getServerWorld(), target);
-        if (quote == null) return new RepairResult(-1, false, "Could not compare this ship with the Eureka blueprints.");
+        if (quote == null) return new RepairResult(-1, false, "Could not compare this ship with the available blueprints.");
         if (quote.beyondSaving()) return RepairResult.BEYOND_SAVING;
         if (quote.repairableBlocks() == 0) return RepairResult.NO_DAMAGE;
 
@@ -60,14 +60,19 @@ public final class ShipRepairManager {
     private static MotionInvokingBlockEntity.RepairQuote createRepairQuote(ServerWorld world, ShipTarget target) {
         PiratesShipBlueprintState state = PiratesShipBlueprintState.get(world);
         PiratesShipBlueprintState.BlueprintRecord saved = state.get(world, target.ship().getId());
-        boolean existing = saved != null;
+        boolean useSaved = saved != null && (Pirates.loadedCompats.sails
+                ? ShipBlueprint.isSailsBlueprint(saved.blueprintId())
+                : ShipBlueprint.isEurekaBlueprint(saved.blueprintId()));
+        boolean existing = useSaved;
         ShipBlueprint blueprint;
         BlockPos anchor;
-        if (saved != null) {
+        if (useSaved) {
             blueprint = ShipBlueprint.load(world, saved.blueprintId(), saved.rotation()).orElse(null);
             anchor = saved.controllerAnchor();
         } else {
-            ShipBlueprint.ShipMatch match = ShipBlueprint.match(world, target.ship()).orElse(null);
+            ShipBlueprint.ShipMatch match = (Pirates.loadedCompats.sails
+                    ? ShipBlueprint.matchSails(world, target.ship())
+                    : ShipBlueprint.match(world, target.ship())).orElse(null);
             if (match == null) return null;
             blueprint = match.blueprint();
             anchor = match.anchor();
