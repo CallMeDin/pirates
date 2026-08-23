@@ -1,58 +1,21 @@
 package ace.actually.pirates.util;
 
-import ace.actually.pirates.blocks.entity.MotionInvokingBlockEntity;
+import ace.actually.pirates.repair.ShipBlueprint;
 import com.quintonc.vs_sails.blocks.HelmBlock;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.Level;
-import org.joml.Vector3dc;
+import com.quintonc.vs_sails.blocks.entity.BaseHelmBlockEntity;
+import net.minecraft.block.BlockState;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 import org.valkyrienskies.core.api.ships.LoadedServerShip;
 import org.valkyrienskies.mod.api.SeatedControllingPlayer;
+import org.valkyrienskies.mod.common.VSGameUtilsKt;
+import org.valkyrienskies.mod.common.assembly.ShipAssembler;
+
+import java.util.HashSet;
+import java.util.Set;
 
 public class SailsCompat {
-
-    private static int flipflop = 1;
-
-    public static void moveTowards(MotionInvokingBlockEntity be, SeatedControllingPlayer power, LoadedServerShip ship)
-    {
-        if(power==null) return;
-        if(be.getTarget().length!=3) return;
-        if(be.getTarget()[0]==0 && be.getTarget()[1]==0 && be.getTarget()[2]==0)
-        {
-            power.setForwardImpulse(1);
-            power.setLeftImpulse(1);
-            return;
-        }
-
-        power.setForwardImpulse(1);
-        Vector3dc v3d = ship.getTransform().getPositionInWorld();
-
-        if(be.getLdx()==-1)
-        {
-            //lastDistance = v3d.distanceSquared(target[0],target[1],target[2]);
-            be.setLdx(vdis(be.getTarget()[0],v3d.x()));
-            be.setLdz(vdis(be.getTarget()[2],v3d.z()));
-        }
-        else
-        {
-            //double currentDistance = v3d.distanceSquared(target[0],target[1],target[2]);
-            double cdx = vdis(be.getTarget()[0],v3d.x());
-            double cdz = vdis(be.getTarget()[2],v3d.z());
-            //System.out.println(lastDistance+" -> "+currentDistance);
-            if(cdx>=be.getLdx() || cdz>= be.getLdz())
-            {
-                power.setLeftImpulse(flipflop);
-
-            }
-            else
-            {
-                power.setLeftImpulse(0);
-                flipflop = -flipflop;
-            }
-            be.setLdx(cdx);
-            be.setLdz(cdz);
-        }
-
-    }
 
     public static void stopMotion(LoadedServerShip ship)
     {
@@ -62,11 +25,43 @@ public class SailsCompat {
         ship.setAttachment(SeatedControllingPlayer.class, seatedControllingPlayer);
     }
 
+    /** Converts a desired rudder amount into incremental Sails helm-wheel input. */
+    public static void steerHelm(World world, BlockPos helmPos, LoadedServerShip ship,
+                                 SeatedControllingPlayer controls, float desiredRudder) {
+        if (!(world.getBlockEntity(helmPos) instanceof BaseHelmBlockEntity helm)) {
+            controls.setLeftImpulse(0.0f);
+            ship.setAttachment(SeatedControllingPlayer.class, controls);
+            return;
+        }
+        int center = BaseHelmBlockEntity.maxAngle / 2;
+        int target = center + Math.round(Math.max(-1.0f, Math.min(1.0f, desiredRudder)) * center);
+        int tolerance = Math.max(1, BaseHelmBlockEntity.wheelInterval / 2);
+        float pulse = helm.getWheelAngle() < target - tolerance ? 1.0f
+                : helm.getWheelAngle() > target + tolerance ? -1.0f : 0.0f;
+        controls.setLeftImpulse(pulse);
+        ship.setAttachment(SeatedControllingPlayer.class, controls);
+    }
     private static double vdis(double x, double xto) {
         return Math.abs(x-xto);
     }
 
-    public static boolean checkHelm(Level world, BlockPos pos) {
-        return world.getBlockState(pos.above()).getBlock().getDescriptionId().contains("helm");
+    public static boolean checkHelm(World world, BlockPos pos) {
+        return world.getBlockState(pos.up()).getBlock() instanceof HelmBlock;
+    }
+
+    /** Assemble only blocks occupying their exact expected position in the matched template. */
+    public static boolean assembleFromBlueprint(ServerWorld world, BlockPos controllerPos,
+                                                ShipBlueprint blueprint) {
+        Set<BlockPos> blocks = new HashSet<>(blueprint.size());
+        for (ShipBlueprint.Entry entry : blueprint.entries()) {
+            if (entry.state().isAir()) continue;
+            BlockPos target = controllerPos.add(entry.relativePos());
+            if (!world.isChunkLoaded(target)) return false;
+            BlockState actual = world.getBlockState(target);
+            if (actual.getBlock() != entry.state().getBlock()
+                    || VSGameUtilsKt.inAssemblyBlacklist(actual)) continue;
+            blocks.add(target.toImmutable());
+        }
+        return !blocks.isEmpty() && ShipAssembler.assembleToShip(world, blocks, 1.0) != null;
     }
 }

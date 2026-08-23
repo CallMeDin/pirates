@@ -1,22 +1,21 @@
 package ace.actually.pirates.entities.pirate_abstract;
-
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.ai.goal.Goal;
-import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.monster.RangedAttackMob;
-import net.minecraft.world.entity.projectile.ProjectileUtil;
-import net.minecraft.world.item.BowItem;
-import net.minecraft.world.item.Items;
-import org.valkyrienskies.mod.common.VSGameUtilsKt;
-
 import java.util.EnumSet;
 import java.util.Objects;
 
-public class PirateBowAttackGoal<T extends Monster & RangedAttackMob> extends Goal {
+import net.minecraft.entity.Entity;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.ai.RangedAttackMob;
+import net.minecraft.entity.ai.goal.Goal;
+import net.minecraft.entity.effect.StatusEffectInstance;
+import net.minecraft.entity.effect.StatusEffects;
+import net.minecraft.entity.mob.HostileEntity;
+import net.minecraft.entity.mob.MobEntity;
+import net.minecraft.entity.projectile.ProjectileUtil;
+import net.minecraft.item.BowItem;
+import net.minecraft.item.Items;
+import org.valkyrienskies.mod.common.VSGameUtilsKt;
+
+public class PirateBowAttackGoal<T extends HostileEntity & RangedAttackMob> extends Goal {
     private final T actor;
     private final double speed;
     private int attackInterval;
@@ -32,14 +31,14 @@ public class PirateBowAttackGoal<T extends Monster & RangedAttackMob> extends Go
         this.speed = speed;
         this.attackInterval = attackInterval;
         this.squaredRange = range * range;
-        this.setFlags(EnumSet.of(Flag.MOVE, Flag.LOOK));
+        this.setControls(EnumSet.of(Control.MOVE, Control.LOOK));
     }
 
     public void setAttackInterval(int attackInterval) {
         this.attackInterval = attackInterval;
     }
 
-    public boolean canUse() {
+    public boolean canStart() {
         return this.actor.getTarget() == null ? false : this.isHoldingBow();
     }
 
@@ -47,32 +46,32 @@ public class PirateBowAttackGoal<T extends Monster & RangedAttackMob> extends Go
         return this.actor.isHolding(Items.BOW);
     }
 
-    public boolean canContinueToUse() {
-        return (this.canUse() || !this.actor.getNavigation().isDone()) && this.isHoldingBow();
+    public boolean shouldContinue() {
+        return (this.canStart() || !this.actor.getNavigation().isIdle()) && this.isHoldingBow();
     }
 
     public void start() {
         super.start();
-        this.actor.setAggressive(true);
+        this.actor.setAttacking(true);
     }
 
     public void stop() {
         super.stop();
-        this.actor.setAggressive(false);
+        this.actor.setAttacking(false);
         this.targetSeeingTicker = 0;
         this.cooldown = -1;
-        this.actor.stopUsingItem();
+        this.actor.clearActiveItem();
     }
 
-    public boolean requiresUpdateEveryTick() {
+    public boolean shouldRunEveryTick() {
         return true;
     }
 
     public void tick() {
         LivingEntity livingEntity = this.actor.getTarget();
         if (livingEntity != null) {
-            double d = this.actor.distanceToSqr(livingEntity.getX(), livingEntity.getY(), livingEntity.getZ());
-            boolean bl = this.actor.getSensing().hasLineOfSight(livingEntity);
+            double d = this.actor.squaredDistanceTo(livingEntity.getX(), livingEntity.getY(), livingEntity.getZ());
+            boolean bl = this.actor.getVisibilityCache().canSee(livingEntity);
             boolean bl2 = this.targetSeeingTicker > 0;
             if (bl != bl2) {
                 this.targetSeeingTicker = 0;
@@ -89,12 +88,12 @@ public class PirateBowAttackGoal<T extends Monster & RangedAttackMob> extends Go
                 ++this.combatTicks;
             } else if (VSGameUtilsKt.getShipManaging(this.actor) != null && VSGameUtilsKt.getShipManaging(livingEntity) != null) {
                 if (Objects.equals(VSGameUtilsKt.getShipManaging(this.actor), VSGameUtilsKt.getShipManaging(livingEntity))) {
-                    this.actor.getNavigation().moveTo(livingEntity, this.speed);
+                    this.actor.getNavigation().startMovingTo(livingEntity, this.speed);
                     this.combatTicks = -1;
                 }
             } else {
-                MobEffectInstance effectInstance = new MobEffectInstance(MobEffects.REGENERATION);
-                this.actor.addEffect(effectInstance);
+                StatusEffectInstance effectInstance = new StatusEffectInstance(StatusEffects.REGENERATION);
+                this.actor.addStatusEffect(effectInstance);
             }
 
             if (this.combatTicks >= 20) {
@@ -116,31 +115,31 @@ public class PirateBowAttackGoal<T extends Monster & RangedAttackMob> extends Go
                     this.backward = true;
                 }
 
-                this.actor.getMoveControl().strafe(this.backward ? -0.5F : 0.5F, this.movingToLeft ? 0.5F : -0.5F);
-                Entity var7 = this.actor.getControlledVehicle();
-                if (var7 instanceof Mob) {
-                    Mob mobEntity = (Mob)var7;
-                    mobEntity.lookAt(livingEntity, 30.0F, 30.0F);
+                this.actor.getMoveControl().strafeTo(this.backward ? -0.5F : 0.5F, this.movingToLeft ? 0.5F : -0.5F);
+                Entity var7 = this.actor.getControllingVehicle();
+                if (var7 instanceof MobEntity) {
+                    MobEntity mobEntity = (MobEntity)var7;
+                    mobEntity.lookAtEntity(livingEntity, 30.0F, 30.0F);
                 }
 
-                this.actor.lookAt(livingEntity, 30.0F, 30.0F);
+                this.actor.lookAtEntity(livingEntity, 30.0F, 30.0F);
             } else {
-                this.actor.getLookControl().setLookAt(livingEntity, 30.0F, 30.0F);
+                this.actor.getLookControl().lookAt(livingEntity, 30.0F, 30.0F);
             }
 
             if (this.actor.isUsingItem()) {
                 if (!bl && this.targetSeeingTicker < -60) {
-                    this.actor.stopUsingItem();
+                    this.actor.clearActiveItem();
                 } else if (bl) {
-                    int i = this.actor.getTicksUsingItem();
+                    int i = this.actor.getItemUseTime();
                     if (i >= 20) {
-                        this.actor.stopUsingItem();
-                        ((RangedAttackMob)this.actor).performRangedAttack(livingEntity, BowItem.getPowerForTime(i));
+                        this.actor.clearActiveItem();
+                        ((RangedAttackMob)this.actor).attack(livingEntity, BowItem.getPullProgress(i));
                         this.cooldown = this.attackInterval;
                     }
                 }
             } else if (--this.cooldown <= 0 && this.targetSeeingTicker >= -60) {
-                this.actor.startUsingItem(ProjectileUtil.getWeaponHoldingHand(this.actor, Items.BOW));
+                this.actor.setCurrentHand(ProjectileUtil.getHandPossiblyHolding(this.actor, Items.BOW));
             }
 
         }

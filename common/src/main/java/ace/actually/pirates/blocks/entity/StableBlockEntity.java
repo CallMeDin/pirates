@@ -1,13 +1,13 @@
 package ace.actually.pirates.blocks.entity;
 
 import ace.actually.pirates.Pirates;
-import net.minecraft.core.BlockPos;
-import net.minecraft.core.Vec3i;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3i;
+import net.minecraft.world.World;
 import org.joml.Vector3d;
 import org.valkyrienskies.core.api.ships.LoadedServerShip;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
@@ -19,43 +19,46 @@ public class StableBlockEntity extends BlockEntity {
     double multiplier = 1;
 
     public StableBlockEntity(BlockPos pos, BlockState state) {
-        super(Pirates.STABLE_BLOCK_ENTITY.get(), pos, state);
+        super(Pirates.STABLE_BLOCK_ENTITY, pos, state);
     }
 
     @Override
-    public void load(CompoundTag nbt) {
-        super.load(nbt);
+    public void readNbt(NbtCompound nbt) {
+        super.readNbt(nbt);
         multiplier=nbt.getDouble("multiplier");
     }
 
     @Override
-    protected void saveAdditional(CompoundTag nbt) {
+    protected void writeNbt(NbtCompound nbt) {
         nbt.putDouble("multiplier",multiplier);
-        super.saveAdditional(nbt);
+        super.writeNbt(nbt);
     }
 
     public void setMultiplier(double multiplier) {
         this.multiplier = multiplier;
-        setChanged();
+        markDirty();
     }
 
-    public static void tick(Level world, BlockPos pos, BlockState state, StableBlockEntity be)
+    public static void tick(World world, BlockPos pos, BlockState state, StableBlockEntity be)
     {
-        if(world instanceof ServerLevel serverWorld)
+        if(world instanceof ServerWorld serverWorld)
         {
             if(VSGameUtilsKt.isBlockInShipyard(serverWorld,pos))
             {
                 LoadedServerShip ship = VSGameUtilsKt.getShipObjectManagingPos(serverWorld,pos);
                 if(ship!=null)
                 {
+                    GameToPhysicsAdapter gtpa = ValkyrienSkiesMod.getOrCreateGTPA(serverWorld.getRegistryKey().getValue().toString());
 
-                    GameToPhysicsAdapter gtfa = ValkyrienSkiesMod.getOrCreateGTPA(VSGameUtilsKt.getDimensionId(world));
+                    if(gtpa!=null)
+                    {
+                        Vec3i vec3i = Vec3i.ZERO.up();
 
-                    Vec3i vec3i = Vec3i.ZERO.above();
-
-                    Vector3d v3d = VectorConversionsMCKt.toJOMLD(vec3i).mul(be.multiplier*ship.getInertiaData().getMass());
-                    Vector3d loc = new Vector3d(pos.getX(),pos.getY(),pos.getZ()).sub(ship.getTransform().getPositionInShip());
-                    gtfa.applyInvariantForceToPos(ship.getId(),v3d,loc);
+                        Vector3d v3d = VectorConversionsMCKt.toJOMLD(vec3i).mul(be.multiplier*ship.getInertiaData().getMass());
+                        Vector3d loc = new Vector3d(pos.getX(),pos.getY(),pos.getZ()).sub(ship.getTransform().getPositionInShip());
+                        gtpa.applyInvariantForceToPos(ship.getId(), v3d, loc);
+                        //gtfa.applyInvariantForce(v3d);
+                    }
 
                 }
 

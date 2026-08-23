@@ -65,13 +65,13 @@ side="BOTH"
 [[dependencies.pirates]]
 modId="valkyrienskies"
 mandatory=true
-versionRange="[2,)"
+versionRange="[2.4.11,)"
 ordering="AFTER"
 side="BOTH"
 [[dependencies.pirates]]
 modId="vlib"
 mandatory=true
-versionRange="[0.0.11,)"
+versionRange="[0.1.1,)"
 ordering="AFTER"
 side="BOTH"
 [[dependencies.pirates]]

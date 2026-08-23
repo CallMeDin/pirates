@@ -1,71 +1,92 @@
 package ace.actually.pirates.entities.pirate_abstract;
 
+import ace.actually.pirates.Pirates;
+import ace.actually.pirates.blocks.CannonPrimingBlock;
+import ace.actually.pirates.blocks.MotionInvokingBlock;
+import ace.actually.pirates.entities.friendly_pirate.FriendlyPirateEntity;
+import ace.actually.pirates.events.IPirateDies;
 import ace.actually.pirates.util.DisarmUtils;
-import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.world.DifficultyInstance;
-import net.minecraft.world.entity.EntityType;
-import net.minecraft.world.entity.MobSpawnType;
-import net.minecraft.world.entity.SpawnGroupData;
-import net.minecraft.world.entity.ai.goal.FloatGoal;
-import net.minecraft.world.entity.ai.goal.LookAtPlayerGoal;
-import net.minecraft.world.entity.ai.goal.RandomLookAroundGoal;
-import net.minecraft.world.entity.monster.Monster;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.ServerLevelAccessor;
+import ace.actually.pirates.compat.MusketModCompat;
+import net.minecraft.entity.EntityData;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.SpawnReason;
+import net.minecraft.entity.ai.goal.LookAroundGoal;
+import net.minecraft.entity.ai.goal.LookAtEntityGoal;
+import net.minecraft.entity.data.DataTracker;
+import net.minecraft.entity.data.TrackedData;
+import net.minecraft.entity.data.TrackedDataHandlerRegistry;
+import net.minecraft.entity.mob.IllagerEntity;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.LocalDifficulty;
+import net.minecraft.world.ServerWorldAccess;
+import net.minecraft.world.World;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 
-public abstract class AbstractPirateEntity  extends Monster {
+import java.util.Objects;
+
+public abstract class AbstractPirateEntity extends IllagerEntity {
 
     protected BlockPos blockToDisable;
 
-    protected AbstractPirateEntity(EntityType<? extends Monster> entityType, Level world, BlockPos blockToDisable) {
+    protected AbstractPirateEntity(EntityType<? extends IllagerEntity> entityType, World world, BlockPos blockToDisable) {
         super(entityType, world);
 
         this.blockToDisable = blockToDisable;
     }
 
     @Override
-    public boolean isPersistenceRequired() {
+    public boolean isPersistent() {
         return true;
     }
-
+    @Override
+    public void addBonusForWave(int wave, boolean unused) {
+        // Your pirate might not need any wave bonus, so leave it empty or log something
+    }
+    @Override
+    public net.minecraft.sound.SoundEvent getCelebratingSound() {
+        return null; // or a custom pirate celebration sound if you have one
+    }
 
     @Override
-    public SpawnGroupData finalizeSpawn(ServerLevelAccessor world, DifficultyInstance difficulty, MobSpawnType spawnReason, SpawnGroupData entityData, CompoundTag entityTag) {
-        entityData = super.finalizeSpawn(world, difficulty, spawnReason, entityData, entityTag);
-        populateDefaultEquipmentSlots(random, difficulty);
-        DisarmUtils.rearm(level(),blockToDisable);
-        setPersistenceRequired();
+    public EntityData initialize(ServerWorldAccess world, LocalDifficulty difficulty, SpawnReason spawnReason, EntityData entityData, NbtCompound entityTag) {
+        entityData = super.initialize(world, difficulty, spawnReason, entityData, entityTag);
+        initEquipment(random, difficulty);
+        DisarmUtils.rearm(getWorld(),blockToDisable);
+        setPersistent();
         return entityData;
     }
 
     @Override
-    protected void registerGoals() {
-        super.registerGoals();
-        //this.goalSelector.addGoal(5, new PirateWanderArroundFarGoal(this, 1.0D));
-        this.goalSelector.addGoal(6, new LookAtPlayerGoal(this, Player.class, 200.0F));
-        this.goalSelector.addGoal(6, new RandomLookAroundGoal(this));
-        this.goalSelector.addGoal(4,new FloatGoal(this));
+    protected void initGoals() {
+        super.initGoals();
+        this.goalSelector.add(5, new PirateWanderArroundFarGoal(this, 1.0D));
+        this.goalSelector.add(6, new LookAtEntityGoal(this, PlayerEntity.class, 200.0F));
+        this.goalSelector.add(6, new LookAroundGoal(this));
 
     }
 
     @Override
     public void remove(RemovalReason reason) {
-        DisarmUtils.disarm(level(),blockToDisable);
+        if (reason == RemovalReason.KILLED && !(this instanceof FriendlyPirateEntity)) {
+            MusketModCompat.dropCartridgeOnKill(this);
+        }
+        DisarmUtils.disarm(getWorld(),blockToDisable);
+        IPirateDies.EVENT.invoker().interact(attackingPlayer,this);
         super.remove(reason);
     }
-
-
-
     public boolean isOnShip() {
         return VSGameUtilsKt.getShipManaging(this) != null;
     }
+    public BlockPos getAssignedStationPos() {
+        return blockToDisable;
+    }
 
     @Override
-    public void addAdditionalSaveData(CompoundTag nbt) {
-        super.addAdditionalSaveData(nbt);
+    public void writeCustomDataToNbt(NbtCompound nbt) {
+        super.writeCustomDataToNbt(nbt);
         nbt.putInt("BlockToDisableX", this.blockToDisable.getX());
         nbt.putInt("BlockToDisableY", this.blockToDisable.getY());
         nbt.putInt("BlockToDisableZ", this.blockToDisable.getZ());
@@ -73,8 +94,8 @@ public abstract class AbstractPirateEntity  extends Monster {
 
 
     @Override
-    public void readAdditionalSaveData(CompoundTag nbt) {
-        super.readAdditionalSaveData(nbt);
+    public void readCustomDataFromNbt(NbtCompound nbt) {
+        super.readCustomDataFromNbt(nbt);
         int x, y, z;
         if (nbt.contains("BlockToDisableX") && nbt.contains("BlockToDisableY") && nbt.contains("BlockToDisableZ")) {
             x = nbt.getInt("BlockToDisableX");
@@ -83,5 +104,30 @@ public abstract class AbstractPirateEntity  extends Monster {
 
             this.blockToDisable = new BlockPos(x, y, z);
         }
+    }
+    // for musket mod with reloading and firing
+    protected static final TrackedData<Boolean> CHARGING =
+            DataTracker.registerData(FriendlyPirateEntity.class, TrackedDataHandlerRegistry.BOOLEAN);
+    @Override
+    protected void initDataTracker() {
+        super.initDataTracker();
+        dataTracker.startTracking(CHARGING, false);
+    }
+    public boolean isCharging() {
+        return this.dataTracker.get(CHARGING);
+    }
+    public void setCharging(boolean charging) {
+        this.dataTracker.set(CHARGING, charging);
+    }
+    @Override
+    public IllagerEntity.State getState() {
+        if (this.isCharging()) {
+            return State.CROSSBOW_CHARGE;
+        } else if (MusketModCompat.isHoldingGun(this)) {
+            if (this.isAttacking())
+                return State.CROSSBOW_HOLD;
+            return (MusketModCompat.isHoldingPistol(this) ? State.NEUTRAL : State.CROSSBOW_CHARGE);
+        }
+        return State.CROSSBOW_CHARGE; // almost never reach this state
     }
 }

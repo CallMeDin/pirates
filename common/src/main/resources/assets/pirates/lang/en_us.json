@@ -6,10 +6,11 @@
   "item.pirates.ship_pather": "Ship Pather",
   "item.pirates.cannoneer": "Cannoneer Contract",
   "item.pirates.doctor": "Doctor Contract",
+  "item.pirates.boatswain": "Boatswain Contract",
 
   "block.pirates.ship_id_block": "Ship Nameplate",
   "block.pirates.cannon_priming_block": "Cannon Activator",
-  "block.Pirates.motion_invoking_block": "Motion Invoker",
+  "block.pirates.motion_invoking_block": "Motion Invoker",
   "block.pirates.crew_spawner_block": "Crew Spawner",
 
   "entity.pirates.pirate": "Pirate",
@@ -18,7 +19,5 @@
   "text.pirates.target": "The ships target position now is:",
   "text.pirates.paths": "The ships path positions are:",
   "text.pirates.pather.add": "Added a new position to this ships path!",
-  "text.pirates.need_mib": "You need to interact with a motion invoking block first!",
-
-  "pirates.tab": "Valkyrien Pirates"
+  "text.pirates.need_mib": "You need to interact with a motion invoking block first!"
 }

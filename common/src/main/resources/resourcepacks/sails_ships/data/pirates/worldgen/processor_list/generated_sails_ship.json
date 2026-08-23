@@ -1,0 +1,7 @@
+{
+  "processors": [
+    {
+      "processor_type": "pirates:generated_sails_ship_marker"
+    }
+  ]
+}

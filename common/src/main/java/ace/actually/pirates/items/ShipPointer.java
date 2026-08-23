@@ -2,66 +2,68 @@ package ace.actually.pirates.items;
 
 import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.entity.MotionInvokingBlockEntity;
-import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.network.chat.Component;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.InteractionResult;
-import net.minecraft.world.InteractionResultHolder;
-import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.UseOnContext;
-import net.minecraft.world.level.Level;
+import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.item.ItemUsageContext;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtElement;
+import net.minecraft.nbt.NbtIntArray;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.text.Text;
+import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.TypedActionResult;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.World;
 
 public class ShipPointer extends Item {
-    public ShipPointer(Properties settings) {
+    public ShipPointer(Settings settings) {
         super(settings);
     }
 
     @Override
-    public InteractionResult useOn(UseOnContext context) {
-        if(context.getLevel() instanceof ServerLevel world  && context.getHand()==InteractionHand.MAIN_HAND)
+    public ActionResult useOnBlock(ItemUsageContext context) {
+        if(context.getWorld() instanceof ServerWorld world  && context.getHand()==Hand.MAIN_HAND)
         {
-            if(world.getBlockState(context.getClickedPos()).is(Pirates.MOTION_INVOKING_BLOCK.get()))
+            if(world.getBlockState(context.getBlockPos()).isOf(Pirates.MOTION_INVOKING_BLOCK))
             {
-                CompoundTag compound = new CompoundTag();
-                BlockPos v = context.getClickedPos();
+                NbtCompound compound = new NbtCompound();
+                BlockPos v = context.getBlockPos();
                 compound.putIntArray("mib",new int[]{v.getX(),v.getY(),v.getZ()});
 
-                context.getPlayer().getItemInHand(InteractionHand.MAIN_HAND).setTag(compound);
+                context.getPlayer().getStackInHand(Hand.MAIN_HAND).setNbt(compound);
             }
             else
             {
 
-                if(context.getItemInHand().hasTag() && context.getItemInHand().getTag().contains("mib"))
+                if(context.getStack().hasNbt() && context.getStack().getNbt().contains("mib"))
                 {
-                    CompoundTag compound = context.getItemInHand().getTag();
+                    NbtCompound compound = context.getStack().getNbt();
                     int[] v = compound.getIntArray("mib");
                     MotionInvokingBlockEntity be = (MotionInvokingBlockEntity) world.getBlockEntity(new BlockPos(v[0],v[1],v[2]));
-                    BlockPos pos = context.getClickedPos();
+                    BlockPos pos = context.getBlockPos();
                     be.setTarget(new int[]{pos.getX(),pos.getY(),pos.getZ()});
                 }
                 else
                 {
-                    context.getPlayer().sendSystemMessage(Component.translatable("text.pirates.need_mib"));
+                    context.getPlayer().sendMessage(Text.translatable("text.pirates.need_mib"));
                 }
             }
 
         }
-        return super.useOn(context);
+        return super.useOnBlock(context);
     }
 
     @Override
-    public InteractionResultHolder<ItemStack> use(Level world, Player user, InteractionHand hand) {
-        if(InteractionHand.MAIN_HAND==hand && !world.isClientSide)
+    public TypedActionResult<ItemStack> use(World world, PlayerEntity user, Hand hand) {
+        if(Hand.MAIN_HAND==hand && !world.isClient)
         {
-            CompoundTag compound = user.getMainHandItem().getTag();
+            NbtCompound compound = user.getMainHandStack().getNbt();
             int[] v = compound.getIntArray("mib");
             MotionInvokingBlockEntity be = (MotionInvokingBlockEntity) world.getBlockEntity(new BlockPos(v[0],v[1],v[2]));
             int[] t = be.getTarget();
-            user.sendSystemMessage(Component.translatable("text.pirates.target").append(Component.nullToEmpty(" "+t[0]+" "+t[1]+" "+t[2])));
+            user.sendMessage(Text.translatable("text.pirates.target").append(Text.of(" "+t[0]+" "+t[1]+" "+t[2])));
         }
         return super.use(world, user, hand);
     }

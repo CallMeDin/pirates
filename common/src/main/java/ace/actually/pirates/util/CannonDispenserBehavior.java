@@ -1,67 +1,65 @@
 package ace.actually.pirates.util;
 import ace.actually.pirates.Pirates;
-import net.minecraft.core.BlockSource;
-import net.minecraft.core.Direction;
-import net.minecraft.core.Position;
-import net.minecraft.core.dispenser.DefaultDispenseItemBehavior;
-import net.minecraft.core.particles.ParticleTypes;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.entity.projectile.Projectile;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.DispenserBlock;
+import ace.actually.pirates.sound.ModSounds;
+import net.minecraft.block.DispenserBlock;
+import net.minecraft.block.dispenser.ItemDispenserBehavior;
+import net.minecraft.entity.projectile.ProjectileEntity;
+import net.minecraft.item.ItemStack;
+import net.minecraft.particle.ParticleTypes;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.util.math.BlockPointer;
+import net.minecraft.util.math.Direction;
+import net.minecraft.util.math.Position;
+import net.minecraft.world.World;
 import org.valkyrienskies.core.api.ships.Ship;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 import org.valkyrienskies.mod.common.util.VectorConversionsMCKt;
+import net.minecraft.particle.DustParticleEffect;
 
 /**
  * A dispenser behavior that spawns a projectile with velocity in front of the dispenser.
  */
 public abstract class CannonDispenserBehavior
-        extends DefaultDispenseItemBehavior {
+        extends ItemDispenserBehavior {
     @Override
-    public ItemStack execute(BlockSource pointer, ItemStack stack) {
-        ServerLevel world = pointer.getLevel();
-        Position position = DispenserBlock.getDispensePosition(pointer);
-        Direction direction = pointer.getBlockState().getValue(DispenserBlock.FACING);
-        Projectile projectileEntity = this.createProjectile(world, position, stack);
-        projectileEntity.shoot(direction.getStepX(), (float)direction.getStepY() + 0.15f, direction.getStepZ(), this.getForce(), this.getVariation() / 2);
-        world.addFreshEntity(projectileEntity);
+    public ItemStack dispenseSilently(BlockPointer pointer, ItemStack stack) {
+        ServerWorld world = pointer.getWorld();
+        Position position = DispenserBlock.getOutputLocation(pointer);
+        Direction direction = pointer.getBlockState().get(DispenserBlock.FACING);
+        ProjectileEntity projectileEntity = this.createProjectile(world, position, stack);
+        projectileEntity.setVelocity(direction.getOffsetX(), (float)direction.getOffsetY() + 0.15f, direction.getOffsetZ(), this.getForce(), this.getVariation() / 2);
+        world.spawnEntity(projectileEntity);
 
         Ship ship = VSGameUtilsKt.getShipManagingPos(world, pointer.getPos());
         if (ship != null) {
-            projectileEntity.addDeltaMovement(VectorConversionsMCKt.toMinecraft(ship.getVelocity()).scale(1/60.0));
+            projectileEntity.addVelocity(VectorConversionsMCKt.toMinecraft(ship.getVelocity()).multiply(1/60.0));
         }
 
-        if (!world.isClientSide) {
-            int xmod = 0;
-            int ymod = 0;
-            int zmod = 0;
+        if (!world.isClient()) {
+            net.minecraft.network.PacketByteBuf buf = net.fabricmc.fabric.api.networking.v1.PacketByteBufs.create();
+            buf.writeDouble(position.getX());
+            buf.writeDouble(position.getY());
+            buf.writeDouble(position.getZ());
+            buf.writeInt(direction.getId());
 
-            switch (direction) {
-                case NORTH -> zmod = -1;
-                case EAST -> xmod = 1;
-                case SOUTH -> zmod = 1;
-                case WEST -> xmod = -1;
-                case UP -> ymod = 1;
-                case DOWN -> ymod = -1;
-            }
-            for(int i = 0; i < 40; ++i) {
-                world.sendParticles(ParticleTypes.CLOUD, position.x() + xmod + (2 * world.random.nextDouble()) - 1, position.y() + ymod + (2 * world.random.nextDouble()) - 0.8, position.z() + zmod + (2 * world.random.nextDouble()) - 1, 1, 0.0, 0.0, 0.0, 0.005);
+            for (net.minecraft.server.network.ServerPlayerEntity player :
+                    net.fabricmc.fabric.api.networking.v1.PlayerLookup.tracking(world, pointer.getPos())) {
+                net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(player, Pirates.CANNON_SMOKE_PACKET_ID, buf);
             }
         }
-        stack.shrink(1);
+
+        stack.decrement(1);
         return stack;
     }
 
     @Override
-    protected void playSound(BlockSource pointer) {
-        pointer.getLevel().playSound(null, pointer.getPos().getX(), pointer.getPos().getY(), pointer.getPos().getZ(), Pirates.CANNONBALL_SHOT.get(), SoundSource.BLOCKS, 1F, 1F);
+    protected void playSound(BlockPointer pointer) {
+        pointer.getWorld().playSound(null, pointer.getPos().getX(), pointer.getPos().getY(), pointer.getPos().getZ(), ModSounds.CANNONBALL_SHOT, SoundCategory.BLOCKS, 1F, 1F);
     }
 
 
-    protected abstract Projectile createProjectile(Level var1, Position var2, ItemStack var3);
+    protected abstract ProjectileEntity createProjectile(World var1, Position var2, ItemStack var3);
 
     /**
      * {@return the variation of a projectile's velocity when spawned}

@@ -3,7 +3,7 @@
 	"id": "pirates",
 	"version": "${mod_version}",
 	"name": "${mod_name}",
-	"description": "{$mod_description}",
+	"description": "${mod_description}",
 	"authors": [
 		"Acrogenous"
 	],
@@ -19,6 +19,9 @@
 			{
 				"value": "ace.actually.pirates.PiratesFabric"
 			}
+		],
+		"client": [
+			"ace.actually.pirates.PiratesFabricClient"
 		]
 	},
 	"mixins": [
@@ -30,10 +33,11 @@
 		"java": ">=17",
 		"fabric-api": "*",
 
-		"valkyrienskies": ">=2.1.3-beta.1+a52f38bd68",
-		"vlib": ">=0.0.11"
+		"valkyrienskies": ">=2.4.11",
+		"vlib": ">=0.1.1"
 	},
 	"suggests": {
-		"another-mod": "*"
+		"vs_sails": ">=0.3.2",
+		"vs_eureka": "*"
 	}
 }

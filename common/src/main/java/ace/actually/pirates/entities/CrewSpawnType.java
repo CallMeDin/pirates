@@ -1,9 +1,9 @@
 package ace.actually.pirates.entities;
 
 
-import net.minecraft.util.StringRepresentable;
+import net.minecraft.util.StringIdentifiable;
 
-public enum CrewSpawnType implements StringRepresentable {
+public enum CrewSpawnType implements StringIdentifiable {
     PIRATE("pirate"),
     VILLAGER("villager"),
     SKELETON_PIRATE("skeleton_pirate"),
@@ -19,7 +19,7 @@ public enum CrewSpawnType implements StringRepresentable {
     }
 
     @Override
-    public String getSerializedName() {
+    public String asString() {
         return this.name;
     }
 }

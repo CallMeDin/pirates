@@ -1,19 +1,27 @@
 package ace.actually.pirates.blocks.entity;
 
-import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.MotionInvokingBlock;
+import ace.actually.pirates.combat.ShipCombatController;
 import ace.actually.pirates.util.ConfigUtils;
 import ace.actually.pirates.util.EurekaCompat;
+import ace.actually.pirates.Pirates;
 import ace.actually.pirates.util.SailsCompat;
-import net.minecraft.core.BlockPos;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.nbt.IntArrayTag;
-import net.minecraft.nbt.ListTag;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.level.ChunkPos;
-import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.state.BlockState;
+import ace.actually.pirates.repair.RepairExclusions;
+import ace.actually.pirates.repair.ShipBlueprint;
+import ace.actually.pirates.repair.ShipRepairManager;
+import ace.actually.pirates.repair.PiratesShipBlueprintState;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtIntArray;
+import net.minecraft.nbt.NbtList;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.BlockRotation;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
+import net.minecraft.util.math.Direction;
+import net.minecraft.world.World;
 import org.joml.Vector3d;
 import org.joml.Vector3dc;
 import org.valkyrienskies.core.api.ships.LoadedServerShip;
@@ -26,12 +34,20 @@ import org.valkyrienskies.mod.common.util.GameToPhysicsAdapter;
 import java.util.List;
 
 import static ace.actually.pirates.blocks.MotionInvokingBlock.COMPAT;
-import static net.minecraft.world.level.block.state.properties.BlockStateProperties.HORIZONTAL_FACING;
+import static net.minecraft.state.property.Properties.HORIZONTAL_FACING;
 
 @SuppressWarnings("UnstableApiUsage")
 public class MotionInvokingBlockEntity extends BlockEntity {
-    ListTag path = new ListTag();
+    NbtList path = new NbtList();
     long nextInstruction = 0;
+    // Read-only legacy fields used once to migrate existing worlds into PiratesShipBlueprintState.
+    private String legacyRepairBlueprintId = "";
+    private BlockRotation legacyRepairBlueprintRotation = BlockRotation.NONE;
+    private transient ShipBlueprint repairBlueprint;
+    private transient long nextBlueprintMatchAttempt = 0L;
+    private transient ShipBlueprint sailsAssemblyBlueprint;
+    private transient long nextSailsAssemblyAttempt = 0L;
+    private boolean generatedSailsShip;
     //boolean isChecked = false;
 
     //variables below this line aren't serialised because they don't need to be.
@@ -43,7 +59,7 @@ public class MotionInvokingBlockEntity extends BlockEntity {
     private static int updateTicks = -1;
 
     public MotionInvokingBlockEntity(BlockPos pos, BlockState state) {
-        super(Pirates.MOTION_INVOKING_BLOCK_ENTITY.get(), pos, state);
+        super(Pirates.MOTION_INVOKING_BLOCK_ENTITY, pos, state);
     }
 
 //    public void setCompat(String compat) {
@@ -51,7 +67,11 @@ public class MotionInvokingBlockEntity extends BlockEntity {
 //        markDirty();
 //    }
 
-    public static void tick(Level world, BlockPos pos, BlockState state, MotionInvokingBlockEntity be) {
+    public static void tick(World world, BlockPos pos, BlockState state, MotionInvokingBlockEntity be) {
+        if (world instanceof ServerWorld serverWorld) {
+            if (be.tryAssembleSailsShip(serverWorld, pos)) return;
+            be.tickRepairController(serverWorld);
+        }
 
 //        if (!be.isChecked) {
 //            state.with(COMPAT, 0);
@@ -65,22 +85,22 @@ public class MotionInvokingBlockEntity extends BlockEntity {
 //            be.isChecked = true;
 //        }
 
-        if(!state.getValue(MotionInvokingBlock.ARMED)) return;
+        if(!state.get(MotionInvokingBlock.ARMED)) return;
 
         //ensure compat value matches loaded dependencies and a helm is present
-        if (state.getValue(COMPAT).equals(1)) {
+        if (state.get(COMPAT).equals(1)) {
             if (!Pirates.loadedCompats.sails) {
-                state = state.setValue(COMPAT, 0);
-                world.setBlock(pos, state, 10);
+                state = state.with(COMPAT, 0);
+                world.setBlockState(pos, state, 10);
                 return;
             } else if (!SailsCompat.checkHelm(world, pos)) {
                 MotionInvokingBlock.disarm(world, pos);
                 return;
             }
-        } else if (state.getValue(COMPAT).equals(2)) {
+        } else if (state.get(COMPAT).equals(2)) {
             if (!Pirates.loadedCompats.eureka) {
-                state = state.setValue(COMPAT, 0);
-                world.setBlock(pos, state, 10);
+                state = state.with(COMPAT, 0);
+                world.setBlockState(pos, state, 10);
                 return;
             } else if (!EurekaCompat.checkHelm(world, pos)) {
                 MotionInvokingBlock.disarm(world, pos);
@@ -92,84 +112,173 @@ public class MotionInvokingBlockEntity extends BlockEntity {
             updateTicks = Integer.parseInt(ConfigUtils.config.getOrDefault("controlled-ship-updates","100"));
 
         }
-        if (!world.isClientSide && world.getGameRules().getBoolean(Pirates.PIRATES_IS_LIVE_WORLD) && world.getGameTime() >= be.nextInstruction) {
+        if (!world.isClient && world.getGameRules().getBoolean(Pirates.PIRATES_IS_LIVE_WORLD) && world.getTime() >= be.nextInstruction) {
 
             if (VSGameUtilsKt.isBlockInShipyard(world, pos)) {
                 ChunkPos chunkPos = world.getChunk(pos).getPos();
-                LoadedServerShip ship = VSGameUtilsKt.getShipObjectManagingPos((ServerLevel) world, chunkPos);
+                LoadedServerShip ship = VSGameUtilsKt.getShipObjectManagingPos((ServerWorld) world, chunkPos);
 
                 if (ship != null) {
                     ship.setStatic(false);
                     SeatedControllingPlayer seatedControllingPlayer = ship.getAttachment(SeatedControllingPlayer.class);
-                    if (seatedControllingPlayer == null && (world.getBlockState(pos.above()).hasProperty(HORIZONTAL_FACING))) {
-                        if (state.getValue(COMPAT).equals(1)) {
-                            seatedControllingPlayer = new SeatedControllingPlayer(world.getBlockState(pos.above()).getValue(HORIZONTAL_FACING).getOpposite()); //not sure this is necessary
-                        } else if (state.getValue(COMPAT).equals(2)) {
-                            seatedControllingPlayer = new SeatedControllingPlayer(world.getBlockState(pos.above()).getValue(HORIZONTAL_FACING).getOpposite());
+                    if (seatedControllingPlayer == null && (world.getBlockState(pos.up()).contains(HORIZONTAL_FACING))) {
+                        if (state.get(COMPAT).equals(1)) {
+                            seatedControllingPlayer = new SeatedControllingPlayer(world.getBlockState(pos.up()).get(HORIZONTAL_FACING).getOpposite()); //not sure this is necessary
+                        } else if (state.get(COMPAT).equals(2)) {
+                            seatedControllingPlayer = new SeatedControllingPlayer(world.getBlockState(pos.up()).get(HORIZONTAL_FACING).getOpposite());
                         }
                         ship.setAttachment(SeatedControllingPlayer.class, seatedControllingPlayer);
                     }
 
-                    if(world.getDayTime()%updateTicks==0) {
-                        if(be.path.isEmpty()) {
-                            List<Ship> ships = VSGameUtilsKt.getAllShips(world).stream().filter(a-> {
-                                if(a.getId()==ship.getId()) return false;
-                                Vector3dc f1 = ship.getTransform().getPositionInWorld();
-                                Vector3dc f2 = a.getTransform().getPositionInWorld();
-                                return f1.distanceSquared(f2)<Pirates.pursuitDistance;
-                            }).toList();
-                            if(!ships.isEmpty()) {
-                                Vector3dc o = ships.get(0).getTransform().getPositionInWorld();
-                                be.setTarget(new int[]{(int) o.x(), (int) o.y(), (int) o.z()});
-                            }
-                        }
-                        else {
-                            int[] v = be.path.getIntArray(0);
-                            be.setTarget(v);
-                            Vector3dc f1 = ship.getTransform().getPositionInWorld();
-                            Vector3dc f2 = new Vector3d(v[0],v[1],v[2]);
-                            if(f1.distanceSquared(f2)<100) {
-                                IntArrayTag nbtInts = (IntArrayTag) be.path.remove(0);
-                                be.path.add(nbtInts);
-                            }
-                        }
-                    }
-
-                    switch (state.getValue(COMPAT)) {
-                        case 1 -> SailsCompat.moveTowards(be,seatedControllingPlayer,ship);
-                        case 2 -> EurekaCompat.moveTowards(be,seatedControllingPlayer,ship);
-                        default -> be.moveShipForward(ship);
-                    }
+                    Direction combatForward = world.getBlockState(pos.up()).get(HORIZONTAL_FACING).getOpposite();
+                    boolean sailsControl = state.get(COMPAT).equals(1);
+                    ShipCombatController.tick((ServerWorld) world, ship, seatedControllingPlayer,
+                            combatForward, sailsControl, pos.up());
                 }
             }
         }
     }
 
+    private boolean tryAssembleSailsShip(ServerWorld world, BlockPos origin) {
+        if (!generatedSailsShip || !Pirates.loadedCompats.sails || VSGameUtilsKt.isBlockInShipyard(world, origin)
+                || !SailsCompat.checkHelm(world, origin) || world.getTime() < nextSailsAssemblyAttempt) {
+            return false;
+        }
+        nextSailsAssemblyAttempt = world.getTime() + 100L;
+        if (sailsAssemblyBlueprint == null) {
+            sailsAssemblyBlueprint = ShipBlueprint.matchSails(world, origin).orElse(null);
+        }
+        return sailsAssemblyBlueprint != null
+                && SailsCompat.assembleFromBlueprint(world, origin, sailsAssemblyBlueprint);
+    }
+    private void tickRepairController(ServerWorld world) {
+        Ship ship = VSGameUtilsKt.getShipManagingPos(world, pos);
+        if (ship == null) return;
+        ShipRepairManager.register(world, ship.getId(), this);
+        migrateLegacyBlueprint(world, ship.getId());
+        loadSavedRepairBlueprint(world, ship.getId());
+    }
+
+    private void migrateLegacyBlueprint(ServerWorld world, long shipId) {
+        if (legacyRepairBlueprintId.isEmpty()) return;
+        Identifier id = Identifier.tryParse(legacyRepairBlueprintId);
+        PiratesShipBlueprintState state = PiratesShipBlueprintState.get(world);
+        if (state.get(world, shipId) == null && id != null && ShipBlueprint.isEurekaBlueprint(id)) {
+            state.put(world, shipId, id, legacyRepairBlueprintRotation, pos);
+            Pirates.LOGGER.info("Migrated legacy repair blueprint {} for VS ship {} into Pirates world data", id, shipId);
+        }
+        legacyRepairBlueprintId = "";
+        legacyRepairBlueprintRotation = BlockRotation.NONE;
+    }
+
+    private void loadSavedRepairBlueprint(ServerWorld world, long shipId) {
+        if (repairBlueprint != null) return;
+        var record = PiratesShipBlueprintState.get(world).get(world, shipId);
+        if (record != null && (Pirates.loadedCompats.sails
+                ? ShipBlueprint.isSailsBlueprint(record.blueprintId())
+                : ShipBlueprint.isEurekaBlueprint(record.blueprintId()))) {
+            repairBlueprint = ShipBlueprint.load(world, record.blueprintId(), record.rotation()).orElse(null);
+        }
+    }
+    public RepairQuote createRepairQuote() {
+        if (!(world instanceof ServerWorld serverWorld)) return null;
+
+        Ship ship = VSGameUtilsKt.getShipManagingPos(serverWorld, pos);
+        if (ship == null) return null;
+        long shipId = ship.getId();
+        loadSavedRepairBlueprint(serverWorld, shipId);
+        boolean existingBlueprint = repairBlueprint != null;
+        if (!existingBlueprint) {
+            repairBlueprint = (Pirates.loadedCompats.sails
+                    ? ShipBlueprint.matchSails(serverWorld, pos)
+                    : ShipBlueprint.match(serverWorld, pos)).orElse(null);
+            if (repairBlueprint == null) return null;
+            PiratesShipBlueprintState.get(serverWorld).put(serverWorld, shipId,
+                    repairBlueprint.id(), repairBlueprint.rotation(), pos);
+        }
+
+        int repairable = countRepairable(serverWorld, repairBlueprint);
+        int eligible = (int) repairBlueprint.entries().stream()
+                .filter(entry -> !RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())).count();
+        boolean beyondSaving = eligible > 0 && (long) repairable * 100L >= (long) eligible * 80L;
+        int goldCost = repairable == 0 ? 0
+                : (int) Math.max(1L, ((long) repairable + Pirates.shipRepairBlocksPerGold - 1L)
+                        / Pirates.shipRepairBlocksPerGold);
+        return new RepairQuote(repairBlueprint.id(), repairBlueprint.rotation(), repairable,
+                eligible, goldCost, beyondSaving, existingBlueprint);
+    }
+
+    private int countRepairable(ServerWorld world, ShipBlueprint blueprint) {
+        int repairable = 0;
+        for (ShipBlueprint.Entry entry : blueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos target = pos.add(entry.relativePos());
+            if (!world.isChunkLoaded(target)) continue;
+            if (RepairExclusions.needsRepair(world.getBlockState(target), entry.state())) repairable++;
+        }
+        return repairable;
+    }
+
+    /** Returns -1 when unavailable, otherwise the number of replaced blueprint blocks. */
+    public int repairImmediately(RepairQuote quote) {
+        if (!(world instanceof ServerWorld serverWorld) || quote == null
+                || !ShipBlueprint.isRepairBlueprint(quote.blueprintId())) return -1;
+        repairBlueprint = ShipBlueprint.load(serverWorld, quote.blueprintId(), quote.rotation()).orElse(null);
+        if (repairBlueprint == null) return -1;
+        Ship ship = VSGameUtilsKt.getShipManagingPos(serverWorld, pos);
+        if (ship == null) return -1;
+        PiratesShipBlueprintState.get(serverWorld).put(serverWorld, ship.getId(),
+                quote.blueprintId(), quote.rotation(), pos);
+        int repaired = 0;
+        for (ShipBlueprint.Entry entry : repairBlueprint.entries()) {
+            if (RepairExclusions.isExcluded(entry.state(), entry.hasBlockEntity())) continue;
+            BlockPos target = pos.add(entry.relativePos());
+            if (!serverWorld.isChunkLoaded(target)) continue;
+            BlockState current = serverWorld.getBlockState(target);
+            if (RepairExclusions.needsRepair(current, entry.state())) {
+                serverWorld.setBlockState(target, RepairExclusions.repairState(entry.state()), net.minecraft.block.Block.NOTIFY_ALL);
+                repaired++;
+            }
+        }
+        return repaired;
+    }
+
+    public record RepairQuote(Identifier blueprintId, BlockRotation rotation, int repairableBlocks,
+                              int eligibleBlocks, int goldCost, boolean beyondSaving,
+                              boolean existingBlueprint) {}
     @Override
-    protected void saveAdditional(CompoundTag nbt) {
+    protected void writeNbt(NbtCompound nbt) {
         nbt.put("path",path);
         nbt.putLong("nextInstruction", nextInstruction);
         nbt.putIntArray("target",target);
-        super.saveAdditional(nbt);
+        nbt.putBoolean("piratesGeneratedSailsShip", generatedSailsShip);
+        super.writeNbt(nbt);
     }
 
     @Override
-    public void load(CompoundTag nbt) {
-        super.load(nbt);
+    public void readNbt(NbtCompound nbt) {
+        super.readNbt(nbt);
         nextInstruction = nbt.getLong("nextInstruction");
+        generatedSailsShip = nbt.getBoolean("piratesGeneratedSailsShip");
         if(nbt.contains("path")) {
-            path = (ListTag) nbt.get("path");
+            path = (NbtList) nbt.get("path");
         }
 
         if(nbt.contains("target")) {
             target = nbt.getIntArray("target");
         }
-
+        legacyRepairBlueprintId = nbt.getString("repairBlueprintId");
+        try {
+            legacyRepairBlueprintRotation = BlockRotation.valueOf(nbt.getString("repairBlueprintRotation"));
+        } catch (IllegalArgumentException ignored) {
+            legacyRepairBlueprintRotation = BlockRotation.NONE;
+        }
+        repairBlueprint = null;
     }
 
     public void setTarget(int[] target) {
         this.target = target;
-        setChanged();
+        markDirty();
     }
 
     public int[] getTarget() {
@@ -192,17 +301,17 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         this.ldz = ldz;
     }
 
-    public ListTag getPath() {
+    public NbtList getPath() {
         return path;
     }
 
-    public void setPath(ListTag path) {
+    public void setPath(NbtList path) {
         this.path = path;
-        setChanged();
+        markDirty();
     }
     public void addPathNode(BlockPos pos) {
-        this.path.add(new IntArrayTag(new int[]{pos.getX(),pos.getY(),pos.getZ()}));
-        setChanged();
+        this.path.add(new NbtIntArray(new int[]{pos.getX(),pos.getY(),pos.getZ()}));
+        markDirty();
     }
 
     /**
@@ -214,14 +323,16 @@ public class MotionInvokingBlockEntity extends BlockEntity {
         double mass = ship.getInertiaData().getMass();
         Vector3d qdc = ship.getTransform().getShipToWorldRotation().getEulerAnglesZXY(new Vector3d()).normalize().mul(mass*10);
         qdc = new Vector3d(-qdc.x,0,-qdc.z);
-        GameToPhysicsAdapter gtfa = ValkyrienSkiesMod.getOrCreateGTPA(VSGameUtilsKt.getDimensionId(level));
+        GameToPhysicsAdapter gtpa = ValkyrienSkiesMod.getOrCreateGTPA(getWorld().getRegistryKey().getValue().toString());
 
-        Vector3dc v3dc = ship.getInertiaData().getCenterOfMassInShip();
-        Vector3d loc = new Vector3d(v3dc.x()+1,v3dc.y(),v3dc.z()+1);
-        //if(world instanceof ServerWorld serverWorld)
-        //{
-        //    serverWorld.spawnParticles(ParticleTypes.BUBBLE,loc.x,loc.y,loc.z,1,0,0,0,0);
-        //}
-        gtfa.applyInvariantForceToPos(ship.getId(),qdc,loc.sub(ship.getTransform().getPositionInShip()));
+        if(gtpa!=null) {
+            Vector3dc v3dc = ship.getInertiaData().getCenterOfMassInShip();
+            Vector3d loc = new Vector3d(v3dc.x()+1,v3dc.y(),v3dc.z()+1);
+            //if(world instanceof ServerWorld serverWorld)
+            //{
+            //    serverWorld.spawnParticles(ParticleTypes.BUBBLE,loc.x,loc.y,loc.z,1,0,0,0,0);
+            //}
+            gtpa.applyInvariantForceToPos(ship.getId(), qdc, loc.sub(ship.getTransform().getPositionInShip()));
+        }
     }
 }

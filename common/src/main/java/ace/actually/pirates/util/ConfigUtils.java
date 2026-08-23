@@ -1,4 +1,6 @@
 package ace.actually.pirates.util;
+
+import dev.architectury.platform.Platform;
 import org.apache.commons.io.FileUtils;
 
 import java.io.File;
@@ -15,7 +17,7 @@ public class ConfigUtils {
 
     public static Map<String,String> loadConfigs()
     {
-        File file = new File("./config/pirates/config.acfg");
+        File file = new File(Platform.getConfigFolder().toString() + "/pirates/config.acfg");
         try {
             List<String> lines = FileUtils.readLines(file,"utf-8");
             lines.forEach(line->
@@ -36,7 +38,7 @@ public class ConfigUtils {
 
     public static void generateConfigs(List<String> input)
     {
-        File file = new File("./config/pirates/config.acfg");
+        File file = new File(Platform.getConfigFolder().toString() + "/pirates/config.acfg");
 
         try {
             FileUtils.writeLines(file,input);
@@ -47,7 +49,7 @@ public class ConfigUtils {
 
     public static Map<String,String> checkConfigs()
     {
-        if(new File("./config/pirates/config.acfg").exists())
+        if(new File(Platform.getConfigFolder().toString() + "/pirates/config.acfg").exists())
         {
             return loadConfigs();
         }
@@ -64,8 +66,23 @@ public class ConfigUtils {
         defaults.add("#The minimum rate the pirates will fire their cannons at");
         defaults.add("cannon-firing-pause=40");
         defaults.add("");
-        defaults.add("#The speed the cannonballs will fire at, default=1.7");
-        defaults.add("cannon-range=1.7");
+        defaults.add("#The speed the cannonballs will fire at, default=3.2 (about 80 blocks on level ground)");
+        defaults.add("cannon-range=3.2");
+        defaults.add("");
+        defaults.add("#Maximum distance in blocks that NPC cannons scan ahead before firing; current legacy default is 80");
+        defaults.add("cannon-can-fire-range=80");
+        defaults.add("");
+        defaults.add("#Ticks between hostile target and operational cannon scans");
+        defaults.add("naval-combat-target-update-ticks=40");
+        defaults.add("naval-combat-steering-update-ticks=5");
+        defaults.add("naval-combat-range-hysteresis=8");
+        defaults.add("naval-combat-broadside-tolerance-degrees=10");
+        defaults.add("#Heading error ignored to prevent left-right rudder oscillation");
+        defaults.add("naval-combat-steering-deadzone-degrees=8");
+        defaults.add("#Maximum automatic rudder input from 0.1 to 1.0");
+        defaults.add("naval-combat-max-rudder-impulse=0.7");
+        defaults.add("naval-combat-patrol-radius=200");
+        defaults.add("naval-combat-patrol-arrival-distance=15");
         defaults.add("");
         defaults.add("#The max amount of blocks for the new ship builder, set to -1 to use the Eureka/VS version");
         defaults.add("max-ship-blocks=-1");
@@ -99,6 +116,19 @@ public class ConfigUtils {
         defaults.add("");
         defaults.add("#what item should be used to recruit friendly pirates in the format \"minecraft:golden_apple,1\" to mean 1 golden apple");
         defaults.add("recruit-cost=minecraft:golden_apple,1");
+        defaults.add("");
+        defaults.add("#what item should be used to recruit doctors from jobless villagers");
+        defaults.add("doctor-recruit-cost=minecraft:emerald,1");
+        defaults.add("");
+        defaults.add("#what item should be used to recruit boatswains from jobless villagers");
+        defaults.add("boatswain-recruit-cost=minecraft:emerald,10");
+        defaults.add("");
+        defaults.add("#gold ingots charged for one full eligible ship repair run");
+        defaults.add("#Number of missing ship blocks repaired per gold ingot; cost has no maximum");
+        defaults.add("ship-repair-blocks-per-gold=10");
+        defaults.add("");
+        defaults.add("#comma-separated block IDs never entered into a repair queue");
+        defaults.add("ship-repair-excluded-blocks=");
 
         return defaults;
     }
