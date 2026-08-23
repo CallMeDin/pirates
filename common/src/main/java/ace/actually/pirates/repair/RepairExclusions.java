@@ -7,8 +7,9 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.registry.Registries;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.registry.tag.TagKey;
 import net.minecraft.util.Identifier;
-import org.valkyrienskies.eureka.block.ShipHelmBlock;
 
 import java.util.Arrays;
 import java.util.HashSet;
@@ -16,6 +17,10 @@ import java.util.Set;
 
 /** Shared eligibility policy used by direct blueprint comparison and repair. */
 public final class RepairExclusions {
+    private static final TagKey<Block> EUREKA_SHIP_HELMS = TagKey.of(
+            RegistryKeys.BLOCK, new Identifier("vs_eureka", "ship_helms"));
+    private static final TagKey<Block> SAILS_HELMS = TagKey.of(
+            RegistryKeys.BLOCK, new Identifier("vs_sails", "helms"));
     private static final Set<Block> VALUABLE_BLOCKS = Set.of(
             Blocks.COAL_ORE, Blocks.DEEPSLATE_COAL_ORE, Blocks.COAL_BLOCK,
             Blocks.IRON_ORE, Blocks.DEEPSLATE_IRON_ORE, Blocks.IRON_BLOCK, Blocks.RAW_IRON_BLOCK,
@@ -33,8 +38,9 @@ public final class RepairExclusions {
         if (state.isAir() || state.isOf(Blocks.STRUCTURE_VOID)) return true;
         // This block has a block entity, but it must still be restored when destroyed.
         if (state.isOf(Pirates.MOTION_INVOKING_BLOCK)) return false;
-        // Eureka helms also have block entities, but are essential ship structure.
-        if (state.getBlock() instanceof ShipHelmBlock) return false;
+        // Never touch optional-mod classes or scan their tags unless that mod is loaded.
+        if (Pirates.loadedCompats.eureka && state.isIn(EUREKA_SHIP_HELMS)) return false;
+        if (Pirates.loadedCompats.sails && state.isIn(SAILS_HELMS)) return false;
         if (VALUABLE_BLOCKS.contains(state.getBlock())) return true;
         if (state.hasBlockEntity() || templateHasBlockEntity) return true;
         return configuredIds().contains(Registries.BLOCK.getId(state.getBlock()));

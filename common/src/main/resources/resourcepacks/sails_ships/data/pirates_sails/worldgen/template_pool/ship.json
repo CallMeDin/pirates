@@ -8,7 +8,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/deep-sea-moray",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -17,7 +17,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/barnacle-hopper",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -26,7 +26,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/midnight-barracuda",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -35,7 +35,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/eye-of-horus",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -44,7 +44,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/antelope",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -53,16 +53,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/anetum-contatum",
-        "processors": "pirates:generated_sails_ship"
-      }
-    },
-    {
-      "weight": 1,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_sails:ship/the-heart-attack",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -71,16 +62,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/whydah",
-        "processors": "pirates:generated_sails_ship"
-      }
-    },
-    {
-      "weight": 1,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_sails:ship/whydah_ghost",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -89,16 +71,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/revenge",
-        "processors": "pirates:generated_sails_ship"
-      }
-    },
-    {
-      "weight": 2,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_sails:ship/the-phantom-leviathan",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -107,7 +80,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/queen-annes-revenge",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     },
     {
@@ -116,7 +89,7 @@
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_sails:ship/hispaniola",
-        "processors": "pirates:generated_sails_ship"
+        "processors": "minecraft:empty"
       }
     }
   ]

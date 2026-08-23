@@ -35,9 +35,7 @@ dependencies {
 
     modCompileOnly "maven.modrinth:eureka:1.20.1-fabric-1.6.3"
     modCompileOnly "maven.modrinth:valkyrien-sails:1.20.1-0.3.2-fabric"
-    modCompileOnly "maven.modrinth:vlib:1.20.1-0.1.1"
     modCompileOnly "maven.modrinth:musket-mod:1.5.4"
-    //modImplementation("maven.modrinth:vlib:1.20.1-0.0.9-alpha+fabric")
 
     // Architectury API
     modApi "dev.architectury:architectury:${rootProject.architectury_version}"

@@ -1,19 +1,11 @@
 package ace.actually.pirates.util;
 
-import ace.actually.pirates.repair.ShipBlueprint;
 import com.quintonc.vs_sails.blocks.HelmBlock;
 import com.quintonc.vs_sails.blocks.entity.BaseHelmBlockEntity;
-import net.minecraft.block.BlockState;
-import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import org.valkyrienskies.core.api.ships.LoadedServerShip;
 import org.valkyrienskies.mod.api.SeatedControllingPlayer;
-import org.valkyrienskies.mod.common.VSGameUtilsKt;
-import org.valkyrienskies.mod.common.assembly.ShipAssembler;
-
-import java.util.HashSet;
-import java.util.Set;
 
 public class SailsCompat {
 
@@ -47,21 +39,5 @@ public class SailsCompat {
 
     public static boolean checkHelm(World world, BlockPos pos) {
         return world.getBlockState(pos.up()).getBlock() instanceof HelmBlock;
-    }
-
-    /** Assemble only blocks occupying their exact expected position in the matched template. */
-    public static boolean assembleFromBlueprint(ServerWorld world, BlockPos controllerPos,
-                                                ShipBlueprint blueprint) {
-        Set<BlockPos> blocks = new HashSet<>(blueprint.size());
-        for (ShipBlueprint.Entry entry : blueprint.entries()) {
-            if (entry.state().isAir()) continue;
-            BlockPos target = controllerPos.add(entry.relativePos());
-            if (!world.isChunkLoaded(target)) return false;
-            BlockState actual = world.getBlockState(target);
-            if (actual.getBlock() != entry.state().getBlock()
-                    || VSGameUtilsKt.inAssemblyBlacklist(actual)) continue;
-            blocks.add(target.toImmutable());
-        }
-        return !blocks.isEmpty() && ShipAssembler.assembleToShip(world, blocks, 1.0) != null;
     }
 }

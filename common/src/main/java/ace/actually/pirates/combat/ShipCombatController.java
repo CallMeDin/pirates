@@ -5,8 +5,7 @@ import ace.actually.pirates.blocks.CannonPrimingBlock;
 import ace.actually.pirates.repair.PiratesShipBlueprintState;
 import ace.actually.pirates.repair.ShipBlueprint;
 import ace.actually.pirates.util.SailsCompat;
-import g_mungus.vlib.v2.api.extension.ShipExtKt;
-import kotlin.Unit;
+import ace.actually.pirates.util.ShipBlockIterator;
 import net.minecraft.block.BlockState;
 import net.minecraft.scoreboard.Team;
 import net.minecraft.server.world.ServerWorld;
@@ -155,13 +154,12 @@ public final class ShipCombatController {
     private static void refreshCannons(ServerWorld world, LoadedServerShip ship, State state,
                                        Direction forward) {
         if (state.cannons.isEmpty()) {
-            ShipExtKt.forEachBlock(ship, pos -> {
+            ShipBlockIterator.forEachBlock(ship, pos -> {
                 BlockState block = world.getBlockState(pos);
                 if (block.isOf(Pirates.CANNON_PRIMING_BLOCK) && block.contains(Properties.FACING)) {
                     state.cannons.add(new Cannon(pos.toImmutable(),
                             classify(forward, block.get(Properties.FACING))));
                 }
-                return Unit.INSTANCE;
             });
         }
 

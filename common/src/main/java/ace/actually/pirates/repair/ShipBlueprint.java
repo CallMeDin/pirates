@@ -1,8 +1,7 @@
 package ace.actually.pirates.repair;
 
 import ace.actually.pirates.Pirates;
-import g_mungus.vlib.v2.api.extension.ShipExtKt;
-import kotlin.Unit;
+import ace.actually.pirates.util.ShipBlockIterator;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.nbt.NbtCompound;
@@ -11,6 +10,7 @@ import net.minecraft.nbt.NbtHelper;
 import net.minecraft.nbt.NbtList;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.structure.StructurePlacementData;
 import net.minecraft.structure.StructureTemplate;
 import net.minecraft.util.BlockMirror;
 import net.minecraft.util.BlockRotation;
@@ -23,6 +23,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Set;
 import org.valkyrienskies.core.api.ships.Ship;
 
 /** Immutable, controller-relative view of one bundled ship structure template. */
@@ -62,6 +64,17 @@ public final class ShipBlueprint {
         return blueprintIds(world, "pirates_sails");
     }
 
+    public static List<Identifier> skyBlueprintIds(ServerWorld world) {
+        return blueprintIds(world, "pirates_sky");
+    }
+
+    public static List<Identifier> allBlueprintIds(ServerWorld world) {
+        List<Identifier> ids = new ArrayList<>(eurekaBlueprintIds(world));
+        ids.addAll(sailsBlueprintIds(world));
+        ids.addAll(skyBlueprintIds(world));
+        return List.copyOf(ids);
+    }
+
     private static List<Identifier> blueprintIds(ServerWorld world, String namespace) {
         return world.getServer().getResourceManager()
                 .findResources("structures/ship", resourceId ->
@@ -86,7 +99,9 @@ public final class ShipBlueprint {
     }
 
     public static boolean isRepairBlueprint(Identifier id) {
-        return isEurekaBlueprint(id) || isSailsBlueprint(id);
+        return isEurekaBlueprint(id) || isSailsBlueprint(id)
+                || (id != null && id.getNamespace().equals("pirates_sky")
+                && id.getPath().startsWith("ship/"));
     }
     public int size() {
         return entries.size();
@@ -97,8 +112,24 @@ public final class ShipBlueprint {
                 .flatMap(template -> buildFromTemplate(world, id, template, rotation, null));
     }
 
+    /** Returns only non-air template positions that were actually placed in the world. */
+    public static Set<BlockPos> placedNonAirPositions(ServerWorld world, StructureTemplate template,
+                                                       BlockPos origin, StructurePlacementData settings) {
+        Set<BlockPos> positions = new HashSet<>();
+        BlockMirror mirror = settings.getMirror() == null ? BlockMirror.NONE : settings.getMirror();
+        BlockRotation rotation = settings.getRotation() == null ? BlockRotation.NONE : settings.getRotation();
+        BlockPos pivot = settings.getPosition() == null ? BlockPos.ORIGIN : settings.getPosition();
+        for (RawEntry entry : decode(world, template)) {
+            if (entry.state().isAir()) continue;
+            BlockPos transformed = StructureTemplate.transformAround(entry.pos(), mirror, rotation, pivot);
+            BlockPos placedPos = origin.add(transformed);
+            if (!world.getBlockState(placedPos).isAir()) positions.add(placedPos);
+        }
+        return positions;
+    }
+
     /**
-     * Matches a template to an already assembled controller. VLib 0.1.1 places the raw
+     * Matches a template to an already assembled controller. Assembly places the raw
      * structure as a ship, so controller-relative offsets survive relocation into shipyard space.
      */
     public static Optional<ShipBlueprint> match(ServerWorld world, BlockPos controllerPos) {
@@ -108,6 +139,11 @@ public final class ShipBlueprint {
     /** Strict match used before assembling a raw, naturally generated Sails structure. */
     public static Optional<ShipBlueprint> matchSails(ServerWorld world, BlockPos controllerPos) {
         return matchAt(world, controllerPos, sailsBlueprintIds(world), "Sails", true);
+    }
+
+    /** Strict match used before assembling any raw, naturally generated Pirates ship. */
+    public static Optional<ShipBlueprint> matchGenerated(ServerWorld world, BlockPos controllerPos) {
+        return matchAt(world, controllerPos, allBlueprintIds(world), "generated", true);
     }
 
     private static Optional<ShipBlueprint> matchAt(ServerWorld world, BlockPos controllerPos,
@@ -174,16 +210,19 @@ public final class ShipBlueprint {
         return matchShip(world, ship, sailsBlueprintIds(world), "Sails");
     }
 
+    public static Optional<ShipMatch> matchAny(ServerWorld world, Ship ship) {
+        return matchShip(world, ship, allBlueprintIds(world), "Pirates");
+    }
+
     private static Optional<ShipMatch> matchShip(ServerWorld world, Ship ship,
                                                   List<Identifier> blueprintIds, String kind) {
         Map<Block, List<BlockPos>> actualByBlock = new HashMap<>();
-        ShipExtKt.forEachBlock(ship, pos -> {
+        ShipBlockIterator.forEachBlock(ship, pos -> {
             BlockState state = world.getBlockState(pos);
             if (!state.isAir()) {
                 actualByBlock.computeIfAbsent(state.getBlock(), ignored -> new ArrayList<>())
                         .add(pos.toImmutable());
             }
-            return Unit.INSTANCE;
         });
         if (actualByBlock.isEmpty()) return Optional.empty();
 

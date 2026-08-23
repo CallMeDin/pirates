@@ -26,7 +26,6 @@ import net.minecraft.world.RaycastContext;
 import net.minecraft.world.World;
 import org.joml.Vector3d;
 import org.valkyrienskies.core.api.ships.Ship;
-import org.valkyrienskies.eureka.fabric.EurekaModFabric;
 import org.valkyrienskies.mod.common.VSClientGameUtils;
 import org.valkyrienskies.mod.common.VSGameUtilsKt;
 

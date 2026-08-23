@@ -57,15 +57,6 @@
       }
     },
     {
-      "weight": 1,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_eureka:ship/the-heart-attack",
-        "processors": "minecraft:empty"
-      }
-    },
-    {
       "weight": 2,
       "element": {
         "element_type": "minecraft:single_pool_element",
@@ -75,29 +66,11 @@
       }
     },
     {
-      "weight": 1,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_eureka:ship/whydah-ghost",
-        "processors": "minecraft:empty"
-      }
-    },
-    {
       "weight": 3,
       "element": {
         "element_type": "minecraft:single_pool_element",
         "projection": "rigid",
         "location": "pirates_eureka:ship/revenge",
-        "processors": "minecraft:empty"
-      }
-    },
-    {
-      "weight": 2,
-      "element": {
-        "element_type": "minecraft:single_pool_element",
-        "projection": "rigid",
-        "location": "pirates_eureka:ship/the-phantom-leviathan",
         "processors": "minecraft:empty"
       }
     },

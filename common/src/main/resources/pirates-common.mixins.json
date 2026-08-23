@@ -5,7 +5,9 @@
   "mixins": [
     "compat.FallingBlockEntityMixin",
     "compat.SailsHelmBlockEntityMixin",
-    "bugfixes.SpeedMixin"
+    "bugfixes.SpeedMixin",
+    "worldgen.StructureTemplateManagerMixin",
+    "worldgen.StructureTemplateMixin"
   ],
   "injectors": {
     "defaultRequire": 1

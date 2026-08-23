@@ -2,8 +2,7 @@ package ace.actually.pirates.repair;
 
 import ace.actually.pirates.Pirates;
 import ace.actually.pirates.blocks.entity.MotionInvokingBlockEntity;
-import g_mungus.vlib.v2.api.extension.ShipExtKt;
-import kotlin.Unit;
+import ace.actually.pirates.util.ShipBlockIterator;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.item.Items;
@@ -60,9 +59,7 @@ public final class ShipRepairManager {
     private static MotionInvokingBlockEntity.RepairQuote createRepairQuote(ServerWorld world, ShipTarget target) {
         PiratesShipBlueprintState state = PiratesShipBlueprintState.get(world);
         PiratesShipBlueprintState.BlueprintRecord saved = state.get(world, target.ship().getId());
-        boolean useSaved = saved != null && (Pirates.loadedCompats.sails
-                ? ShipBlueprint.isSailsBlueprint(saved.blueprintId())
-                : ShipBlueprint.isEurekaBlueprint(saved.blueprintId()));
+        boolean useSaved = saved != null && ShipBlueprint.isRepairBlueprint(saved.blueprintId());
         boolean existing = useSaved;
         ShipBlueprint blueprint;
         BlockPos anchor;
@@ -70,9 +67,7 @@ public final class ShipRepairManager {
             blueprint = ShipBlueprint.load(world, saved.blueprintId(), saved.rotation()).orElse(null);
             anchor = saved.controllerAnchor();
         } else {
-            ShipBlueprint.ShipMatch match = (Pirates.loadedCompats.sails
-                    ? ShipBlueprint.matchSails(world, target.ship())
-                    : ShipBlueprint.match(world, target.ship())).orElse(null);
+            ShipBlueprint.ShipMatch match = ShipBlueprint.matchAny(world, target.ship()).orElse(null);
             if (match == null) return null;
             blueprint = match.blueprint();
             anchor = match.anchor();
@@ -171,11 +166,10 @@ public final class ShipRepairManager {
 
     private static MotionInvokingBlockEntity findController(ServerWorld world, Ship ship) {
         MotionInvokingBlockEntity[] found = new MotionInvokingBlockEntity[1];
-        ShipExtKt.forEachBlock(ship, blockPos -> {
+        ShipBlockIterator.forEachBlock(ship, blockPos -> {
             if (found[0] == null && world.getBlockEntity(blockPos) instanceof MotionInvokingBlockEntity controller) {
                 found[0] = controller;
             }
-            return Unit.INSTANCE;
         });
         if (found[0] != null) register(world, ship.getId(), found[0]);
         return found[0];
